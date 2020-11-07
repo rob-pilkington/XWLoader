@@ -384,18 +384,18 @@ namespace Assets.Scripts.LfdReader
                 var extendedSectionInfoSectionType = new short[SectionCount];
                 var extendedSectionInfoUnknown1 = new byte[SectionCount][];
                 var extendedSectionInfoHardpointCount = new byte[SectionCount];
-                var extendedSectionInfoUnknown2 = new byte[SectionCount][];
+                var extendedSectionInfoSectionOffset = new short[SectionCount];
                 var extendedSectionInfoHardpointOffset = new short[SectionCount];
-                var extendedSectionInfoUnknown3 = new byte[SectionCount][];
+                var extendedSectionInfoUnknown2 = new byte[SectionCount][];
                 for (var i = 0; i < SectionCount; i++)
                 {
                     extendedSectionInfoStartPosition[i] = reader.BaseStream.Position;
                     extendedSectionInfoSectionType[i] = reader.ReadInt16();
                     extendedSectionInfoUnknown1[i] = reader.ReadBytes(41);
                     extendedSectionInfoHardpointCount[i] = reader.ReadByte();
-                    extendedSectionInfoUnknown2[i] = reader.ReadBytes(2);
+                    extendedSectionInfoSectionOffset[i] = reader.ReadInt16();
                     extendedSectionInfoHardpointOffset[i] = reader.ReadInt16();
-                    extendedSectionInfoUnknown3[i] = reader.ReadBytes(16);
+                    extendedSectionInfoUnknown2[i] = reader.ReadBytes(16);
                 }
 
                 SectionHardpoints = new HardpointRecord[SectionCount][];
@@ -436,17 +436,23 @@ namespace Assets.Scripts.LfdReader
                 var bytesRead = reader.BaseStream.Position - startPosition;
                 var remainingData = reader.ReadBytes((int)(DataLength - bytesRead));
 
-                using (var stream = new MemoryStream(remainingData, 0, remainingData.Length))
-                using (var subreader = BinaryReaderFactory.Instantiate(isLittleEndian, stream))
-                {
-                    Sections = new SectionRecord[SectionCount];
+                Sections = new SectionRecord[SectionCount];
 
-                    // For the purpose of analysis, I need to know how many bytes could remain
-                    for (var i = 0; i < SectionCount; i++)
+                // For the purpose of analysis, I need to know how many bytes could remain
+                for (var i = 0; i < SectionCount; i++)
+                {
+                    var thisPosition = GetPosition(i);
+                    var next = i + 1;
+                    var byteCount = (next < SectionCount ? GetPosition(next) : remainingData.Length) - thisPosition;
+                    Debug.Log($"Byte Count: {byteCount}");
+                    using (var stream = new MemoryStream(remainingData, thisPosition, byteCount))
+                    using (var subreader = BinaryReaderFactory.Instantiate(isLittleEndian, stream))
                     {
                         Sections[i] = new SectionRecord();
-                        Sections[i].Read(subreader, null, true, false);
+                        Sections[i].Read(subreader, byteCount, true, false);
                     }
+
+                    int GetPosition(int index) => (int)(extendedSectionInfoStartPosition[index] - bytesRead + extendedSectionInfoSectionOffset[index] - startPosition);
                 }
             }
         }

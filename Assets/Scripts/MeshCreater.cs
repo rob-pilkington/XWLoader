@@ -43,7 +43,7 @@ namespace Assets.Scripts
                 var geometry = transforms.First(x => x.name == "Geometry");
                 var marking = transforms.First(x => x.name == "Marking");
 
-                SetMesh(geometry, marking, section, flightGroupColor, !disabledMarkingSectionIndices?.Contains(sectionIndex) ?? true, lodLevel);
+                SetMesh(sectionObject, geometry, marking, section, flightGroupColor, !disabledMarkingSectionIndices?.Contains(sectionIndex) ?? true, lodLevel);
                 sectionObject.name = $"Section{sectionIndex}";
 
                 if (hardpoints.Length > sectionIndex)
@@ -62,7 +62,7 @@ namespace Assets.Scripts
             return gameObject;
         }
 
-        public void SetMesh(Transform geometryTransform, Transform markingTransform, SectionRecord section, Color? flightGroupColor, bool enableMarkings, int lodLevel = 0)
+        public void SetMesh(GameObject sectionObject, Transform geometryTransform, Transform markingTransform, SectionRecord section, Color? flightGroupColor, bool enableMarkings, int lodLevel = 0)
         {
             var mesh = geometryTransform.GetComponent<MeshFilter>().mesh;
             var markingMesh = markingTransform.GetComponent<MeshFilter>().mesh;
@@ -132,8 +132,16 @@ namespace Assets.Scripts
                 }
             }
 
-            mesh.vertices = vertices.ToArray();
-            markingMesh.vertices = vertices.ToArray();
+            // May want to make recentering an optional feature for the library rather than mandatory if there turns out to
+            // be a practical benefit to doing so.
+            var center = _coordinateConverter.ConvertCoordinates((lodRecord.BoundingBox1 + lodRecord.BoundingBox2) / 2);
+                        
+            sectionObject.transform.localPosition = center;
+                        
+            var verticesArray = vertices.Select(x => x - center).ToArray();
+                        
+            mesh.vertices = verticesArray;
+            markingMesh.vertices = verticesArray;
 
             mesh.triangles = triangles.ToArray();
             markingMesh.triangles = markTriangles.ToArray();

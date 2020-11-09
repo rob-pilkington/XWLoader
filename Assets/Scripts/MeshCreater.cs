@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using Assets.Scripts.LfdReader;
+using Assets.Scripts.Palette;
 
 namespace Assets.Scripts
 {
@@ -14,10 +15,10 @@ namespace Assets.Scripts
         private Transform _baseTransform;
         private Material _baseMaterial;
         private Material _markingMaterial;
-        private byte[][] _palette;
+        private IPaletteMapper _paletteMapper;
         private CoordinateConverter _coordinateConverter;
 
-        public MeshCreater(CoordinateConverter coordinateConverter, GameObject baseObject, GameObject baseSection, GameObject baseHardpoint, Transform transform, Material baseMaterial, Material markingMaterial, byte[][] palette)
+        public MeshCreater(CoordinateConverter coordinateConverter, GameObject baseObject, GameObject baseSection, GameObject baseHardpoint, Transform transform, Material baseMaterial, Material markingMaterial, IPaletteMapper paletteMapper)
         {
             _coordinateConverter = coordinateConverter;
             _baseObject = baseObject;
@@ -26,7 +27,7 @@ namespace Assets.Scripts
             _baseTransform = transform;
             _baseMaterial = baseMaterial;
             _markingMaterial = markingMaterial;
-            _palette = palette;
+            _paletteMapper = paletteMapper;
         }
 
         public GameObject CreateGameObject(SectionRecord[] sections, HardpointRecord[][] hardpoints, int lodLevel = 0, Color? flightGroupColor = null, int[] disabledMarkingSectionIndices = null)
@@ -102,7 +103,7 @@ namespace Assets.Scripts
                         var lineTriangleIndices = GetTriangleIndices(linePolygonVertices[j].ToArray());
 
                         // TODO: need to generate new normals (from CreateCylinderFromLine) if polygon.ShadeFlag is set.
-                        CopyVertices(linePolygonVertices[j], new Vector3[0], polygon.ShadeFlag, lineVertexIndices[j].ToArray(), lineTriangleIndices, GetColor(lodRecord.Colors[i], flightGroupColor), linePolygonNormals[j], vertices, triangles, normals, colors);
+                        CopyVertices(linePolygonVertices[j], new Vector3[0], polygon.ShadeFlag, lineVertexIndices[j].ToArray(), lineTriangleIndices, _paletteMapper.GetColor(lodRecord.Colors[i], flightGroupColor), linePolygonNormals[j], vertices, triangles, normals, colors);
                     }
                 }
                 else
@@ -112,7 +113,7 @@ namespace Assets.Scripts
 
                     var triangleIndices = GetTriangleIndices(polygon.Vertices);
 
-                    CopyVertices(originalVertices, sectionNormals, polygon.ShadeFlag, vertexIndices, triangleIndices, GetColor(lodRecord.Colors[i], flightGroupColor), normal, vertices, triangles, normals, colors);
+                    CopyVertices(originalVertices, sectionNormals, polygon.ShadeFlag, vertexIndices, triangleIndices, _paletteMapper.GetColor(lodRecord.Colors[i], flightGroupColor), normal, vertices, triangles, normals, colors);
 
                     if (enableMarkings)
                         SetMarkingsOnMesh(
@@ -128,7 +129,7 @@ namespace Assets.Scripts
                             polygon);
 
                     if (triangleIndices.Length > 0 && polygon.TwoSidedFlag)
-                        CopyVertices(originalVertices, sectionNormals, polygon.ShadeFlag, vertexIndices, triangleIndices.Reverse().ToArray(), GetColor(lodRecord.Colors[i], flightGroupColor), -normal, vertices, triangles, normals, colors);
+                        CopyVertices(originalVertices, sectionNormals, polygon.ShadeFlag, vertexIndices, triangleIndices.Reverse().ToArray(), _paletteMapper.GetColor(lodRecord.Colors[i], flightGroupColor), -normal, vertices, triangles, normals, colors);
                 }
             }
 
@@ -240,7 +241,7 @@ namespace Assets.Scripts
                         markVertices[1] + Quaternion.LookRotation(markVertices[0] - markVertices[1], normal) * Vector3.right * scaleFactor
                     };
 
-                    CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, lineVertices, CalculateMarkingNormals(lineVertices), polygon.ShadeFlag, GetColor(markRecord.MarkColor, flightGroupColor), normal, vertices, markTriangles, normals, colors);
+                    CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, lineVertices, CalculateMarkingNormals(lineVertices), polygon.ShadeFlag, _paletteMapper.GetColor(markRecord.MarkColor, flightGroupColor), normal, vertices, markTriangles, normals, colors);
                 }
                 else
                 {
@@ -258,14 +259,14 @@ namespace Assets.Scripts
                         vertexRange2.Insert(0, intersectionPoint);
 
                         // First polygon
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange1, CalculateMarkingNormals(vertexRange1), polygon.ShadeFlag, GetColor(markRecord.MarkColor, flightGroupColor), normal, vertices, markTriangles, normals, colors);
+                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange1, CalculateMarkingNormals(vertexRange1), polygon.ShadeFlag, _paletteMapper.GetColor(markRecord.MarkColor, flightGroupColor), normal, vertices, markTriangles, normals, colors);
 
                         // Second polygon 
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange2, CalculateMarkingNormals(vertexRange2), polygon.ShadeFlag, GetColor(markRecord.MarkColor, flightGroupColor), normal, vertices, markTriangles, normals, colors);
+                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange2, CalculateMarkingNormals(vertexRange2), polygon.ShadeFlag, _paletteMapper.GetColor(markRecord.MarkColor, flightGroupColor), normal, vertices, markTriangles, normals, colors);
                     }
                     else
                     {
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, markVertices, CalculateMarkingNormals(markVertices), polygon.ShadeFlag, GetColor(markRecord.MarkColor, flightGroupColor), normal, vertices, markTriangles, normals, colors);
+                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, markVertices, CalculateMarkingNormals(markVertices), polygon.ShadeFlag, _paletteMapper.GetColor(markRecord.MarkColor, flightGroupColor), normal, vertices, markTriangles, normals, colors);
                     }
 
                     bool HasIntersectionPoint(out Vector3 intersection, out int firstSplit, out int secondSplit)
@@ -475,114 +476,6 @@ namespace Assets.Scripts
 
         protected int[] GetTriangleIndices(Vector3[] vertices) => new Triangulator(Get2dProjection(CalculateNormal(vertices.ToList()), vertices)).Triangulate();
         
-        public Color GetColor(long colorId, Color? flightGroupColor)
-        {
-            // These mappings are currently for the X-Wing color mappings.
-            // TIE Fighter uses a different VGA.PAC and it's likely the mappings are quite different.
-            // The TIE Fighter-specific mappings have been commented as such.
-            // We'll probably need to make a separate mapper for TIE Fighter.
-
-            // Color ranges:
-            const int
-                ImperialBlue = 0,  // 0-15: imperial blue
-                ImperialGray = 16, // 16-31: imperial gray
-                RebelBeige = 32,   // 32-47: rebel beige
-                Gray = 48,         // 48-63: gray
-                Yellow = 64,       // 64-85: yellow
-                Red = 76,          // 76-87: red
-                Blue = 88,         // 88-99: blue
-                Cockpit = 100,     // 100-111: cockpit
-                DeathStar = 112,   // 112-127: Death Star
-                Orange = 133;      // Orange (from TIE)
-
-            const int
-                RegularOffset = 9, // Pick something in a standard 12-entry palette section
-                LowOffset = 7, // First 12 entries in a large 16-entry palette section
-                MidOffset = 11, // Last 12 entries in a large 16-entry palette section
-                HighOffset = 15; // Last 8 entries in a large 16-entry palette section
-
-            switch (colorId)
-            {
-                case 0x1: return ColorFromBytes(_palette[ImperialBlue + LowOffset]);
-                case 0x2: return ColorFromBytes(_palette[ImperialGray + LowOffset]);
-                case 0x3: return ColorFromBytes(_palette[RebelBeige + LowOffset]);
-                case 0x4: return ColorFromBytes(_palette[Gray + LowOffset]);
-                case 0x5: return ColorFromBytes(_palette[ImperialBlue + MidOffset]);
-                case 0x6: return ColorFromBytes(_palette[ImperialGray + MidOffset]);
-                case 0x7: return ColorFromBytes(_palette[RebelBeige + MidOffset]);
-                case 0x8: return ColorFromBytes(_palette[Gray + MidOffset]);
-                case 0x9: return ColorFromBytes(_palette[ImperialBlue+ HighOffset]);
-                case 0xa: return ColorFromBytes(_palette[ImperialGray + HighOffset]);
-                case 0xb: return ColorFromBytes(_palette[RebelBeige + HighOffset]);
-                case 0xc: return ColorFromBytes(_palette[Gray + HighOffset]);
-
-                case 0xd: return ColorFromBytes(_palette[Yellow + RegularOffset]);
-                case 0xe: return flightGroupColor ?? ColorFromBytes(_palette[Red + RegularOffset]); // used for flight group color
-                case 0xf: return ColorFromBytes(_palette[Blue + RegularOffset]);
-
-                case 0x11: return ColorFromBytes(_palette[Cockpit + RegularOffset]);
-                case 0x12: return ColorFromBytes(_palette[DeathStar + HighOffset]);
-                case 0x13: return ColorFromBytes(_palette[Gray + MidOffset]); // gray; from TIE
-                case 0x14: return ColorFromBytes(_palette[Gray + HighOffset-1]); // dark gray; from TIE
-                case 0x15: return Color.green; // flashing green
-                case 0x16: return Color.red; // flashing red (red engines)
-                case 0x17: return Color.blue; // flashing blue (blue engines)
-
-                case 0x1b: return ColorFromBytes(_palette[Gray + HighOffset]); // darkest 5 from gray in the game
-
-                // more research needed for these colors:
-                case 0x10: return ColorFromBytes(_palette[Cockpit + RegularOffset]);
-                case 0x1a: return ColorFromBytes(_palette[Red + RegularOffset]); // red; from TIE
-                case 0x1c: return ColorFromBytes(_palette[Blue + RegularOffset]); // blue; from TIE
-                case 0x1d: return ColorFromBytes(_palette[ImperialGray + LowOffset]);
-                case 0x1e: return ColorFromBytes(_palette[RebelBeige + MidOffset]);
-                case 0x1f: return ColorFromBytes(_palette[Gray + LowOffset+1]);
-
-                case 0x20: return ColorFromBytes(_palette[ImperialBlue + MidOffset]);
-                case 0x21: return ColorFromBytes(_palette[ImperialGray + MidOffset]);
-                case 0x22: return ColorFromBytes(_palette[RebelBeige + LowOffset]);
-                case 0x23: return ColorFromBytes(_palette[Gray + LowOffset + 2]);
-                case 0x24: return ColorFromBytes(_palette[ImperialBlue + MidOffset-1]);
-                case 0x25: return ColorFromBytes(_palette[ImperialGray + MidOffset-1]);
-                case 0x26: return ColorFromBytes(_palette[RebelBeige + MidOffset-2]);
-                case 0x27: return ColorFromBytes(_palette[Gray + MidOffset-2]);
-                case 0x28: return ColorFromBytes(_palette[Gray + LowOffset-1]);
-                case 0x48: return ColorFromBytes(_palette[Gray + MidOffset-1]);
-                case 0x68: return ColorFromBytes(_palette[Gray + HighOffset-1]);
-
-                case 0x81: return ColorFromBytes(_palette[ImperialBlue + LowOffset]); // from TIE
-                case 0x82: return ColorFromBytes(_palette[ImperialGray + MidOffset]);
-                case 0x83: return ColorFromBytes(_palette[RebelBeige + MidOffset]);
-                case 0x84: return ColorFromBytes(_palette[Gray + MidOffset]);
-
-                case 0x86: return ColorFromBytes(_palette[Gray + LowOffset]); // from TIE
-                case 0x88: return ColorFromBytes(_palette[Gray + HighOffset-2]); // from TIE
-                case 0x89: return ColorFromBytes(_palette[ImperialBlue + MidOffset]); // from TIE
-
-                case 0x8a: return ColorFromBytes(_palette[ImperialGray + MidOffset]); // from TIE
-                case 0x8b: return ColorFromBytes(_palette[RebelBeige + MidOffset]); // from TIE
-
-                case 0x8c: return ColorFromBytes(_palette[Gray + HighOffset-2]);
-                case 0x8d: return ColorFromBytes(_palette[Yellow + RegularOffset]);
-                case 0x8f: return ColorFromBytes(_palette[Blue + RegularOffset]);
-
-                case 0x90: return ColorFromBytes(_palette[Gray + HighOffset]); // from TIE
-
-                // I have a feeling these colors are "no shading" colors
-                case 0x96: return Color.red; // flashing red (red engines)
-                case 0x97: return Color.blue; // flashing blue (blue engines)
-
-                case 0x9b: return ColorFromBytes(_palette[Gray + HighOffset]); // near-black gray on transport; doesn't appear to be shaded
-                case 0x9c: return ColorFromBytes(_palette[Orange]); // blue in tech room, orange in game; from TIE
-
-                default:
-                    Debug.Log($"Unknown color: {colorId} ({colorId.ToString("X")})");
-                    return Color.magenta;
-            }
-        }
-
-        public static Color ColorFromBytes(byte[] bytes) => new Color(Convert.ToSingle(bytes[0]) / 63, Convert.ToSingle(bytes[1]) / 63, Convert.ToSingle(bytes[2]) / 63);
-
         /// <remarks>
         /// https://answers.unity.com/questions/1522620/converting-a-3d-polygon-into-a-2d-polygon.html
         /// </remarks>

@@ -262,6 +262,8 @@ namespace Assets.Scripts.LfdReader
         /// <param name="hasWrongEndianLineRadius">Set to true for Mac/Windows version of X-Wing, otherwise false</param>
         public CplxRecord(bool hasWrongEndianLineRadius)
         {
+            // Other formats don't do this. Likely bad data for just X-Wing Mac that was carried over to the Windows version since they
+            // are just the same files.
             _hasWrongEndianLineRadius = hasWrongEndianLineRadius;
         }
 
@@ -444,7 +446,6 @@ namespace Assets.Scripts.LfdReader
                     var thisPosition = GetPosition(i);
                     var next = i + 1;
                     var byteCount = (next < SectionCount ? GetPosition(next) : remainingData.Length) - thisPosition;
-                    Debug.Log($"Byte Count: {byteCount}");
                     using (var stream = new MemoryStream(remainingData, thisPosition, byteCount))
                     using (var subreader = BinaryReaderFactory.Instantiate(isLittleEndian, stream))
                     {

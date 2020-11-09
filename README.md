@@ -20,3 +20,4 @@ Model properties:
 * Left Bracket/Right Bracket: change LOD highter/lower detail
 * Backspace: toggle special markings
 * Minus/Equals: previous/next flight group color
+* Backslash: toggle model-defined hardpoint indicators

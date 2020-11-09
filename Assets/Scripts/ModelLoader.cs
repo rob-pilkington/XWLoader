@@ -346,6 +346,16 @@ public class ModelLoader : MonoBehaviour
 
             LoadShip();
         }
+
+        if (Input.GetKeyDown(KeyCode.Backslash))
+        {
+            var meshRenderers = _shipContainer.transform.GetComponentsInChildren<MeshRenderer>()
+                .Where(c => c.name.StartsWith("Hardpoint", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var meshRenderer in meshRenderers)
+                meshRenderer.enabled = !meshRenderer.enabled;
+        }
     }
 
     public void SaveButtonOnClick()

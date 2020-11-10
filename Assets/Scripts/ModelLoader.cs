@@ -302,14 +302,14 @@ public class ModelLoader : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Minus))
         {
             if (--_currentFlightGroupColorIndex < 0)
-                _currentFlightGroupColorIndex = _flightGroupColors.Count - 1;
+                _currentFlightGroupColorIndex = 2;// _flightGroupColors.Count - 1;
 
             LoadShip();
         }
 
         if (Input.GetKeyDown(KeyCode.Equals))
         {
-            if (++_currentFlightGroupColorIndex >= _flightGroupColors.Count)
+            if (++_currentFlightGroupColorIndex >= 3)// _flightGroupColors.Count)
                 _currentFlightGroupColorIndex = 0;
 
             LoadShip();
@@ -418,7 +418,7 @@ public class ModelLoader : MonoBehaviour
 
         var disabledMarkingSectionIndices = _showSpecialMarkings ? new int[0] : GetDisabledMarkingSectionIndices(recordType, recordName);
 
-        _shipContainer = meshCreater.CreateGameObject(sections, sectionHardpoints, _currentLod, _flightGroupColors[_currentFlightGroupColorIndex], disabledMarkingSectionIndices);
+        _shipContainer = meshCreater.CreateGameObject(sections, sectionHardpoints, recordType == "SHIP", _currentLod, _currentFlightGroupColorIndex, disabledMarkingSectionIndices);
     }
 
     private static SectionRecord[] FilterSections(string recordType, string recordName, SectionRecord[] sections)

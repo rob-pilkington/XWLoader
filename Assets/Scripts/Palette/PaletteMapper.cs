@@ -51,51 +51,60 @@ namespace Assets.Scripts.Palette
         {
             // Color ranges:
             const int
-                ImperialBlue = 0,  // 0-15: imperial blue
-                ImperialGray = 16, // 16-31: imperial gray
-                RebelBeige = 32,   // 32-47: rebel beige
-                Gray = 48,         // 48-63: gray
-                Yellow = 64,       // 64-75: yellow
-                Red = 76,          // 76-87: red
-                Blue = 88,         // 88-99: blue
-                Cockpit = 100,     // 100-111: cockpit
-                DeathStar = 112;   // 112-127: Death Star
+                ImperialBlue = 0,  // 0-15: imperial blue (16)
+                ImperialGray = 16, // 16-31: imperial gray (16)
+                RebelBeige = 32,   // 32-47: rebel beige (16)
+                Gray = 48,         // 48-63: gray (16)
+                Yellow = 64,       // 64-75: yellow (12)
+                Red = 76,          // 76-87: red (12)
+                Blue = 88,         // 88-99: blue (12)
+                Cockpit = 100,     // 100-111: cockpit (12)
+                DeathStar = 112;   // 112-127: Death Star (16)
 
             const int
                 RegularOffset = 9, // Pick something in a standard 12-entry palette section
-                LowOffset = 7, // First 12 entries in a large 16-entry palette section
+                LowOffset = 7, // First 12 entries in a large 16-entry palette section (brighter)
                 MidOffset = 11, // Last 12 entries in a large 16-entry palette section
-                HighOffset = 15; // Last 8 entries in a large 16-entry palette section
+                HighOffset = 15; // Last 8 entries in a large 16-entry palette section (darker)
 
             switch (colorId)
             {
-                case 0x1: return ColorFromBytes(_palette[ImperialBlue + LowOffset]);
-                case 0x2: return ColorFromBytes(_palette[ImperialGray + LowOffset]);
-                case 0x3: return ColorFromBytes(_palette[RebelBeige + LowOffset]);
-                case 0x4: return ColorFromBytes(_palette[Gray + LowOffset]);
-                case 0x5: return ColorFromBytes(_palette[ImperialBlue + MidOffset]);
-                case 0x6: return ColorFromBytes(_palette[ImperialGray + MidOffset]);
-                case 0x7: return ColorFromBytes(_palette[RebelBeige + MidOffset]);
-                case 0x8: return ColorFromBytes(_palette[Gray + MidOffset]);
-                case 0x9: return ColorFromBytes(_palette[ImperialBlue + HighOffset]);
-                case 0xa: return ColorFromBytes(_palette[ImperialGray + HighOffset]);
-                case 0xb: return ColorFromBytes(_palette[RebelBeige + HighOffset]);
-                case 0xc: return ColorFromBytes(_palette[Gray + HighOffset]);
+                case 0x1: return ColorFromBytes(_palette[ImperialBlue + LowOffset]); // first 12
+                case 0x2: return ColorFromBytes(_palette[ImperialGray + LowOffset]); // first 12
+                case 0x3: return ColorFromBytes(_palette[RebelBeige + LowOffset]); // first 12
+                case 0x4: return ColorFromBytes(_palette[Gray + LowOffset]); // first 12
+                case 0x5: return ColorFromBytes(_palette[ImperialBlue + MidOffset]); // last 12
+                case 0x6: return ColorFromBytes(_palette[ImperialGray + MidOffset]); // last 12
+                case 0x7: return ColorFromBytes(_palette[RebelBeige + MidOffset]); // last 12
+                case 0x8: return ColorFromBytes(_palette[Gray + MidOffset]); // last 12
+                case 0x9: return ColorFromBytes(_palette[ImperialBlue + HighOffset]); // last 8
+                case 0xa: return ColorFromBytes(_palette[ImperialGray + HighOffset]); // last 8
+                case 0xb: return ColorFromBytes(_palette[RebelBeige + HighOffset]); // last 8
+                case 0xc: return ColorFromBytes(_palette[Gray + HighOffset]); // last 8
 
-                case 0xd: return ColorFromBytes(_palette[Yellow + RegularOffset]);
-                case 0xe: return flightGroupColor ?? ColorFromBytes(_palette[Red + RegularOffset]); // used for flight group color
-                case 0xf: return ColorFromBytes(_palette[Blue + RegularOffset]);
+                case 0xd: return ColorFromBytes(_palette[Yellow + RegularOffset]); // all 12
+                case 0xe: return flightGroupColor ?? ColorFromBytes(_palette[Red + RegularOffset]); // used for flight group color; all 12
+                case 0xf: return ColorFromBytes(_palette[Blue + RegularOffset]); // all 12
 
-                case 0x11: return ColorFromBytes(_palette[Cockpit + RegularOffset]);
-                case 0x12: return ColorFromBytes(_palette[DeathStar + HighOffset]);
+                // TODO: cockpit really needs some additional specular/smoothness mapping
+                case 0x10: return ColorFromBytes(_palette[Cockpit + RegularOffset]); // all 12 colors
+                case 0x11: return ColorFromBytes(_palette[Cockpit + RegularOffset + 1]); // last 8 colors
+
+                case 0x12: return ColorFromBytes(_palette[DeathStar + LowOffset]); // all 16 colors
+                case 0x13: return ColorFromBytes(_palette[DeathStar + MidOffset]); // last 12
+                case 0x14: return ColorFromBytes(_palette[DeathStar + HighOffset]); // last 8
+
                 case 0x15: return Color.green; // flashing green
                 case 0x16: return Color.red; // flashing red (red engines)
                 case 0x17: return Color.blue; // flashing blue (blue engines)
 
-                case 0x1b: return ColorFromBytes(_palette[Gray + HighOffset]); // darkest 5 from gray in the game
+                case 0x18: return ColorFromBytes(_palette[Red + LowOffset]); // first 8
+                case 0x19: return ColorFromBytes(_palette[Red + RegularOffset]); // middle 6
+                case 0x1a: return ColorFromBytes(_palette[Red + MidOffset]); // last 6
+
+                case 0x1b: return ColorFromBytes(_palette[Gray + HighOffset]); // darkest 4 from gray in the game
 
                 // more research needed for these colors:
-                case 0x10: return ColorFromBytes(_palette[Cockpit + RegularOffset]);
                 case 0x1d: return ColorFromBytes(_palette[ImperialGray + LowOffset]);
                 case 0x1e: return ColorFromBytes(_palette[RebelBeige + MidOffset]);
                 case 0x1f: return ColorFromBytes(_palette[Gray + LowOffset + 1]);

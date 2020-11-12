@@ -34,6 +34,7 @@
 		half _Glossiness;
 		half _Metallic;
 		fixed4 _Color;
+		float _EngineGlow;
 
 		// Add instancing support for this shader. You need to check 'Enable Instancing' on materials that use the shader.
 		// See https://docs.unity3d.com/Manual/GPUInstancing.html for more information about instancing.
@@ -62,7 +63,8 @@
 
 			float2 Pal = float2(Index/512, 0);	// XW + TF
 
-			color = IN.vertexVGA.b < 1 ? tex2D(_PaletteTex, Pal) : (IN.vertexVGA.b == 1 ? float4(0,1,0, 1) : (IN.vertexVGA.b == 2 ? float4(1, 0, 0, 1) : float4(0, 0, 1, 1)));
+			color = IN.vertexVGA.b < 1 ? tex2D(_PaletteTex, Pal) : (IN.vertexVGA.b == 1 ? lerp(float4(0,0,0,1), float4(0,1,0, 1), _EngineGlow) : (IN.vertexVGA.b == 2 ? lerp(float4(1, 0.5, 0.5, 1), float4(1, 0, 0, 1), _EngineGlow) : lerp(float4(0.5, 0.5, 1, 1), float4(0, 0, 1, 1), _EngineGlow)));
+			//color = IN.vertexVGA.b < 1 ? tex2D(_PaletteTex, Pal) : (IN.vertexVGA.b == 1 ? float4(0, 1, 0, 1) : (IN.vertexVGA.b == 2 ? float4(1, 0, 0, 1) : float4(0, 0, 1, 1)));
 		}
 		ENDCG
 	}

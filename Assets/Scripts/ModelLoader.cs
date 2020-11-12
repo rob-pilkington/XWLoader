@@ -36,6 +36,8 @@ public class ModelLoader : MonoBehaviour
     [SerializeField] private InputField xWingCplxResourcePathInput;
     [SerializeField] private InputField tieShipResourcePathInput;
     [SerializeField] private Text settingsValidationText;
+    
+    private float EngineGlow = 0f;
 
     private string paletteFileName;
     private string xWingCrftResourcePath;
@@ -173,6 +175,15 @@ public class ModelLoader : MonoBehaviour
             return;
 
         var cameraTransform = Camera.main.transform;
+        
+        EngineGlow = (Time.time % 0.5f) / 0.25f;    // A value of 0-2
+
+        if (EngineGlow > 1f)
+            ShipMaterial.SetFloat("_EngineGlow", 2f - EngineGlow);
+        else
+            ShipMaterial.SetFloat("_EngineGlow", EngineGlow);
+
+
 
         var delta = 100 * Time.deltaTime;
 

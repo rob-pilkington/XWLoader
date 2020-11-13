@@ -9,8 +9,7 @@ namespace Assets.Scripts.Palette
     public interface IPaletteMapper
     {
         int PaletteSize { get; }
-        Color GetColor(long colorId);
-        ColorInfo GetColorInfo(long colorId, int? flightGroupColor);
+        ColorInfo GetColorInfo(byte colorId, int? flightGroupColor);
     }
 
     public abstract class PaletteMapper : IPaletteMapper
@@ -84,24 +83,11 @@ namespace Assets.Scripts.Palette
 
         private static Color ColorFromBytes(byte[] bytes) => new Color(Convert.ToSingle(bytes[0]) / 63, Convert.ToSingle(bytes[1]) / 63, Convert.ToSingle(bytes[2]) / 63);
 
-        public Color GetColor(long colorId)
-        {
-            var colorInfo = GetColorInfo(colorId, null);
+        public abstract ColorInfo GetColorInfo(byte colorId, int? flightGroupColor);
 
-            if (colorInfo.OverrideColor.HasValue)
-                return colorInfo.OverrideColor.Value;
+        protected bool IsFlatShaded(byte colorId) => (colorId & 0x80) != 0;
 
-            if (colorInfo.Index.HasValue)
-                return _palette[colorInfo.Index.Value];
-            
-            if (colorInfo.OverrideColor.HasValue)
-                return colorInfo.OverrideColor.Value;
-
-            Debug.LogWarning($"Unknown color: {colorId} ({colorId:X})");
-            return Color.magenta;
-        }
-
-        public abstract ColorInfo GetColorInfo(long colorId, int? flightGroupColor);
+        protected byte GetBaseColorId(byte colorId) => (byte)(colorId & 0x7f);
 
         public Texture GeneratePaletteTexture()
         {
@@ -186,95 +172,90 @@ namespace Assets.Scripts.Palette
         protected override int CockpitStartIndex => Cockpit;
         protected override int CockpitPaletteLength => 12;
 
-        public override ColorInfo GetColorInfo(long colorId, int? flightGroupColor)
+        public override ColorInfo GetColorInfo(byte colorId, int? flightGroupColor)
         {
-            switch (colorId)
+            var index = GetIndex();
+
+            return new ColorInfo(index, IsFlatShaded(colorId));
+
+            int? GetIndex()
             {
-                case 0x1: return new ColorInfo(ImperialBlue + LowOffset); // first 12
-                case 0x2: return new ColorInfo(ImperialGray + LowOffset); // first 12
-                case 0x3: return new ColorInfo(RebelBeige + LowOffset); // first 12
-                case 0x4: return new ColorInfo(Gray + LowOffset); // first 12
-                case 0x5: return new ColorInfo(ImperialBlue + MidOffset); // last 12
-                case 0x6: return new ColorInfo(ImperialGray + MidOffset); // last 12
-                case 0x7: return new ColorInfo(RebelBeige + MidOffset); // last 12
-                case 0x8: return new ColorInfo(Gray + MidOffset); // last 12
-                case 0x9: return new ColorInfo(ImperialBlue + HighOffset); // last 8
-                case 0xa: return new ColorInfo(ImperialGray + HighOffset); // last 8
-                case 0xb: return new ColorInfo(RebelBeige + HighOffset); // last 8
-                case 0xc: return new ColorInfo(Gray + HighOffset); // last 8
+                switch (GetBaseColorId(colorId))
+                {
+                    case 0x1: return ImperialBlue + LowOffset; // first 12
+                    case 0x2: return ImperialGray + LowOffset; // first 12
+                    case 0x3: return RebelBeige + LowOffset; // first 12
+                    case 0x4: return Gray + LowOffset; // first 12
+                    case 0x5: return ImperialBlue + MidOffset; // last 12
+                    case 0x6: return ImperialGray + MidOffset; // last 12
+                    case 0x7: return RebelBeige + MidOffset; // last 12
+                    case 0x8: return Gray + MidOffset; // last 12
+                    case 0x9: return ImperialBlue + HighOffset; // last 8
+                    case 0xa: return ImperialGray + HighOffset; // last 8
+                    case 0xb: return RebelBeige + HighOffset; // last 8
+                    case 0xc: return Gray + HighOffset; // last 8
 
-                case 0xd: return new ColorInfo(Yellow + RegularOffset); // all 12
+                    case 0xd: return Yellow + RegularOffset; // all 12
 
-                case 0xe: // used for flight group color; all 12
-                    if (flightGroupColor.HasValue)
-                    {
-                        if (flightGroupColor.Value == 1)
-                            return new ColorInfo(Blue + RegularOffset);
+                    case 0xe: // used for flight group color; all 12
+                        if (flightGroupColor.HasValue)
+                        {
+                            if (flightGroupColor.Value == 1)
+                                return Blue + RegularOffset;
 
-                        if (flightGroupColor.Value == 2)
-                            return new ColorInfo(Yellow + RegularOffset);
+                            if (flightGroupColor.Value == 2)
+                                return Yellow + RegularOffset;
 
-                        var customColor = flightGroupColor.Value - 3;
+                            var customColor = flightGroupColor.Value - 3;
 
-                        if (customColor >= 0 && customColor < CustomFlightGroupColorCount)
-                            return new ColorInfo(CustomFlightGroupColorStartIndex + (customColor * 3 + 1));
-                    }
+                            if (customColor >= 0 && customColor < CustomFlightGroupColorCount)
+                                return CustomFlightGroupColorStartIndex + (customColor * 3 + 1);
+                        }
 
-                    return new ColorInfo(Red + RegularOffset);
+                        return Red + RegularOffset;
 
-                case 0xf: return new ColorInfo(Blue + RegularOffset); // all 12
+                    case 0xf: return Blue + RegularOffset; // all 12
 
-                // TODO: cockpit really needs some additional specular/smoothness mapping
-                case 0x10: return new ColorInfo(Cockpit + 6); // all 12 colors
-                case 0x11: return new ColorInfo(Cockpit + 7); // last 8 colors
+                    case 0x10: return Cockpit + 6; // all 12 colors
+                    case 0x11: return Cockpit + 7; // last 8 colors
 
-                case 0x12: return new ColorInfo(DeathStar + LowOffset); // all 16 colors
-                case 0x13: return new ColorInfo(DeathStar + MidOffset); // last 12
-                case 0x14: return new ColorInfo(DeathStar + HighOffset); // last 8
+                    case 0x12: return DeathStar + LowOffset; // all 16 colors
+                    case 0x13: return DeathStar + MidOffset; // last 12
+                    case 0x14: return DeathStar + HighOffset; // last 8
 
-                case 0x15: return new ColorInfo(GlowGreenIndex); // flashing green
-                case 0x16: return new ColorInfo(GlowRedIndex); // flashing red (red engines)
-                case 0x17: return new ColorInfo(GlowBlueIndex); // flashing blue (blue engines)
+                    case 0x15: return GlowGreenIndex; // flashing green
+                    case 0x16: return GlowRedIndex; // flashing red (red engines)
+                    case 0x17: return GlowBlueIndex; // flashing blue (blue engines)
 
-                case 0x18: return new ColorInfo(Red + LowOffset); // first 8
-                case 0x19: return new ColorInfo(Red + RegularOffset); // middle 6
-                case 0x1a: return new ColorInfo(Red + MidOffset); // last 6
+                    case 0x18: return Red + LowOffset; // first 8
+                    case 0x19: return Red + RegularOffset; // middle 6
+                    case 0x1a: return Red + MidOffset; // last 6
 
-                case 0x1b: return new ColorInfo(Gray + HighOffset); // darkest 4 from gray in the game
+                    case 0x1b: return Gray + HighOffset; // darkest 4 from gray in the game
 
-                // more research needed for these colors:
-                case 0x1d: return new ColorInfo(ImperialGray + LowOffset);
-                case 0x1e: return new ColorInfo(RebelBeige + MidOffset);
-                case 0x1f: return new ColorInfo(Gray + LowOffset + 1);
+                    // more research needed for these colors:
+                    case 0x1d: return ImperialGray + LowOffset;
+                    case 0x1e: return RebelBeige + MidOffset;
+                    case 0x1f: return Gray + LowOffset + 1;
 
-                case 0x20: return new ColorInfo(ImperialBlue + MidOffset);
-                case 0x21: return new ColorInfo(ImperialGray + MidOffset);
-                case 0x22: return new ColorInfo(RebelBeige + LowOffset);
-                case 0x23: return new ColorInfo(Gray + LowOffset + 2);
-                case 0x24: return new ColorInfo(ImperialBlue + MidOffset - 1);
-                case 0x25: return new ColorInfo(ImperialGray + MidOffset - 1);
-                case 0x26: return new ColorInfo(RebelBeige + MidOffset - 2);
-                case 0x27: return new ColorInfo(Gray + MidOffset - 2);
-                case 0x28: return new ColorInfo(Gray + LowOffset - 1);
-                case 0x48: return new ColorInfo(Gray + MidOffset - 1);
-                case 0x68: return new ColorInfo(Gray + HighOffset - 1);
+                    case 0x20: return ImperialBlue + MidOffset;
+                    case 0x21: return ImperialGray + MidOffset;
+                    case 0x22: return RebelBeige + LowOffset;
+                    case 0x23: return Gray + LowOffset + 2;
+                    case 0x24: return ImperialBlue + MidOffset - 1;
+                    case 0x25: return ImperialGray + MidOffset - 1;
+                    case 0x26: return RebelBeige + MidOffset - 2;
+                    case 0x27: return Gray + MidOffset - 2;
+                    case 0x28: return Gray + LowOffset - 1;
+                    case 0x48: return Gray + MidOffset - 1;
+                    case 0x68: return Gray + HighOffset - 1;
 
-                case 0x82: return new ColorInfo(ImperialGray + MidOffset);
-                case 0x83: return new ColorInfo(RebelBeige + MidOffset);
-                case 0x84: return new ColorInfo(Gray + MidOffset);
+                    case 0x7f: return DeathStar + LowOffset; // used in a DS tower at a lower LOD (as 0xff)
 
-                case 0x8c: return new ColorInfo(Gray + HighOffset - 2);
-                case 0x8d: return new ColorInfo(Yellow + RegularOffset);
-                case 0x8f: return new ColorInfo(Blue + RegularOffset);
-
-                case 0x96: return new ColorInfo(GlowRedIndex); // flashing red (red engines)
-                case 0x97: return new ColorInfo(GlowBlueIndex); // flashing blue (blue engines)
-
-                case 0x9b: return new ColorInfo(Gray + HighOffset); // near-black gray on transport; doesn't appear to be shaded
-
-                case 0xff: return new ColorInfo(DeathStar + LowOffset); // used in a a DS tower?
-
-                default: return new ColorInfo(null);
+                    default:
+                        Debug.LogWarning($"Unknown color: {colorId} ({colorId:X})");
+                        return null;
+                }
             }
         }
     }
@@ -304,99 +285,85 @@ namespace Assets.Scripts.Palette
         protected override int CockpitStartIndex => Cockpit;
         protected override int CockpitPaletteLength => 6;
 
-        public override ColorInfo GetColorInfo(long colorId, int? flightGroupColor)
+        public override ColorInfo GetColorInfo(byte colorId, int? flightGroupColor)
         {
-            switch (colorId)
+            var index = GetIndex();
+
+            return new ColorInfo(index, IsFlatShaded(colorId));
+
+            int? GetIndex()
             {
-                case 0x1: return new ColorInfo(ImperialBlue + LowOffset);
-                case 0x2: return new ColorInfo(ImperialGray + LowOffset);
-                case 0x3: return new ColorInfo(RebelBeige + LowOffset);
-                case 0x4: return new ColorInfo(Gray + LowOffset);
-                case 0x5: return new ColorInfo(ImperialBlue + MidOffset);
-                case 0x6: return new ColorInfo(ImperialGray + MidOffset);
-                case 0x7: return new ColorInfo(RebelBeige + MidOffset);
-                case 0x8: return new ColorInfo(Gray + MidOffset);
-                case 0x9: return new ColorInfo(ImperialBlue + HighOffset);
-                case 0xa: return new ColorInfo(ImperialGray + HighOffset);
-                case 0xb: return new ColorInfo(RebelBeige + HighOffset);
-                case 0xc: return new ColorInfo(Gray + HighOffset);
+                // Note: 0x9c maps to an orange (we could use 130 for this) in flight, but it appears that blue
+                // (which it appears to be in the tech/film rooms) was the original intent.
+                // Colors above 0x80 are flat-shaded colors matching the lower colors: 0x09c ^ 0x80 = 0x1c = blue
+                switch (GetBaseColorId(colorId))
+                {
+                    case 0x1: return ImperialBlue + LowOffset;
+                    case 0x2: return ImperialGray + LowOffset;
+                    case 0x3: return RebelBeige + LowOffset;
+                    case 0x4: return Gray + LowOffset;
+                    case 0x5: return ImperialBlue + MidOffset;
+                    case 0x6: return ImperialGray + MidOffset;
+                    case 0x7: return RebelBeige + MidOffset;
+                    case 0x8: return Gray + MidOffset;
+                    case 0x9: return ImperialBlue + HighOffset;
+                    case 0xa: return ImperialGray + HighOffset;
+                    case 0xb: return RebelBeige + HighOffset;
+                    case 0xc: return Gray + HighOffset;
 
-                case 0xd: return new ColorInfo(Yellow + RegularOffset);
+                    case 0xd: return Yellow + RegularOffset;
 
-                case 0xe: // used for flight group color; all 12
-                    if (flightGroupColor.HasValue)
-                    {
-                        if (flightGroupColor.Value == 1)
-                            return new ColorInfo(Blue + RegularOffset);
+                    case 0xe: // used for flight group color; all 12
+                        if (flightGroupColor.HasValue)
+                        {
+                            if (flightGroupColor.Value == 1)
+                                return Blue + RegularOffset;
 
-                        if (flightGroupColor.Value == 2)
-                            return new ColorInfo(Yellow + RegularOffset);
+                            if (flightGroupColor.Value == 2)
+                                return Yellow + RegularOffset;
 
-                        var customColor = flightGroupColor.Value - 3;
-                        if (customColor >= 0 && customColor < CustomFlightGroupColorCount)
-                            return new ColorInfo(CustomFlightGroupColorStartIndex + (customColor * 3 + 1));
-                    }
+                            var customColor = flightGroupColor.Value - 3;
+                            if (customColor >= 0 && customColor < CustomFlightGroupColorCount)
+                                return CustomFlightGroupColorStartIndex + (customColor * 3 + 1);
+                        }
 
-                    return new ColorInfo(Red + RegularOffset);
+                        return Red + RegularOffset;
 
-                case 0xf: return new ColorInfo(Blue + RegularOffset);
+                    case 0xf: return Blue + RegularOffset;
 
-                case 0x11: return new ColorInfo(Cockpit + SmallOffset);
+                    case 0x11: return Cockpit + SmallOffset;
 
-                case 0x13: return new ColorInfo(Gray + MidOffset);
-                case 0x14: return new ColorInfo(Gray + HighOffset - 1);
-                case 0x15: return new ColorInfo(GlowGreenIndex); // flashing green
-                case 0x16: return new ColorInfo(GlowRedIndex); // flashing red (red engines)
-                case 0x17: return new ColorInfo(GlowBlueIndex); // flashing blue (blue engines)
+                    case 0x13: return Gray + MidOffset;
+                    case 0x14: return Gray + HighOffset - 1;
+                    case 0x15: return GlowGreenIndex; // flashing green
+                    case 0x16: return GlowRedIndex; // flashing red (red engines)
+                    case 0x17: return GlowBlueIndex; // flashing blue (blue engines)
 
-                case 0x1b: return new ColorInfo(Gray + HighOffset); // darkest 5 from gray in the game
+                    case 0x1b: return Gray + HighOffset; // darkest 5 from gray in the game
 
-                // More research especially needed for the colors that follow. Initial stab a values are very rough guesses and have not had much validation.
-                // Note that TIE Fighter has a wider palette to play around with, so we probably need more offset ranges.
+                    // More research especially needed for the colors that follow. Initial stab a values are very rough guesses and have not had much validation.
+                    // Note that TIE Fighter has a wider palette to play around with, so we probably need more offset ranges.
 
-                case 0x10: return new ColorInfo(Cockpit + SmallOffset);
-                case 0x1a: return new ColorInfo(Red + RegularOffset);
-                case 0x1c: return new ColorInfo(Blue + RegularOffset);
-                case 0x1d: return new ColorInfo(ImperialGray + LowOffset);
-                case 0x1e: return new ColorInfo(RebelBeige + MidOffset);
-                case 0x1f: return new ColorInfo(Gray + LowOffset + 1);
+                    case 0x10: return Cockpit + SmallOffset;
+                    case 0x1a: return Red + RegularOffset;
+                    case 0x1c: return Blue + RegularOffset;
+                    case 0x1d: return ImperialGray + LowOffset;
+                    case 0x1e: return RebelBeige + MidOffset;
+                    case 0x1f: return Gray + LowOffset + 1;
 
-                case 0x20: return new ColorInfo(ImperialBlue + MidOffset);
-                case 0x21: return new ColorInfo(ImperialGray + MidOffset);
-                case 0x22: return new ColorInfo(RebelBeige + LowOffset);
-                case 0x23: return new ColorInfo(Gray + LowOffset + 2);
-                case 0x24: return new ColorInfo(ImperialBlue + MidOffset - 1);
-                case 0x25: return new ColorInfo(ImperialGray + MidOffset - 1);
-                case 0x26: return new ColorInfo(RebelBeige + MidOffset - 2);
-                case 0x27: return new ColorInfo(Gray + MidOffset - 2);
+                    case 0x20: return ImperialBlue + MidOffset;
+                    case 0x21: return ImperialGray + MidOffset;
+                    case 0x22: return RebelBeige + LowOffset;
+                    case 0x23: return Gray + LowOffset + 2;
+                    case 0x24: return ImperialBlue + MidOffset - 1;
+                    case 0x25: return ImperialGray + MidOffset - 1;
+                    case 0x26: return RebelBeige + MidOffset - 2;
+                    case 0x27: return Gray + MidOffset - 2;
 
-                case 0x81: return new ColorInfo(ImperialBlue + LowOffset);
-                case 0x82: return new ColorInfo(ImperialGray + MidOffset);
-                case 0x83: return new ColorInfo(RebelBeige + MidOffset);
-                case 0x84: return new ColorInfo(Gray + MidOffset);
-
-                case 0x86: return new ColorInfo(Gray + LowOffset);
-                case 0x85: return new ColorInfo(ImperialBlue + MidOffset);
-                case 0x88: return new ColorInfo(Gray + HighOffset - 2);
-                case 0x89: return new ColorInfo(ImperialBlue + MidOffset);
-
-                case 0x8a: return new ColorInfo(ImperialGray + MidOffset);
-                case 0x8b: return new ColorInfo(RebelBeige + MidOffset);
-
-                case 0x8c: return new ColorInfo(Gray + HighOffset - 2);
-                case 0x8d: return new ColorInfo(Yellow + RegularOffset);
-                case 0x8f: return new ColorInfo(Blue + RegularOffset);
-
-                case 0x90: return new ColorInfo(Gray + HighOffset);
-
-                case 0x96: return new ColorInfo(GlowRedIndex); // flashing red (red engines)
-                case 0x97: return new ColorInfo(GlowBlueIndex); // flashing blue (blue engines)
-
-                case 0x9b: return new ColorInfo(Gray + HighOffset); // near-black gray on transport; doesn't appear to be shaded
-
-                case 0x9c: return new ColorInfo(Orange); // blue in tech room, orange in game
-
-                default: return new ColorInfo(null);
+                    default:
+                        Debug.LogWarning($"Unknown color: {colorId} ({colorId:X})");
+                        return null;
+                }
             }
         }
     }
@@ -404,13 +371,13 @@ namespace Assets.Scripts.Palette
     public struct ColorInfo
     {
         // TODO: expand to include more information about the palette range.
-        public ColorInfo(int? index, Color? overrideColor = null)
+        public ColorInfo(int? index, bool isFlatShaded = false)
         {
             Index = index;
-            OverrideColor = overrideColor;
+            IsFlatShaded = isFlatShaded;
         }
 
         public readonly int? Index;
-        public readonly Color? OverrideColor;
+        public readonly bool IsFlatShaded;
     }
 }

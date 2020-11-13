@@ -68,7 +68,6 @@ namespace Assets.Scripts
             var triangles = new List<int>();
             var markTriangles = new List<int>();
             var normals = new List<Vector3>();
-            var colors = new List<Color>();
             var uv = new List<Vector2>();
 
             var lodRecord = section.LodRecords[Math.Min(lodLevel, section.LodRecords.Count - 1)];
@@ -82,7 +81,6 @@ namespace Assets.Scripts
 
                 var polygon = lodRecord.PolygonLineRecords[i];
 
-                var color = _paletteMapper.GetColor(lodRecord.Colors[i]);
                 var colorInfo = _paletteMapper.GetColorInfo(lodRecord.Colors[i], flightGroupColor);
 
                 if (polygon.VertexIndices.Length == 2)
@@ -103,7 +101,7 @@ namespace Assets.Scripts
                         var lineTriangleIndices = GetTriangleIndices(linePolygonVertices[j].ToArray());
 
                         // TODO: need to generate new normals (from CreateCylinderFromLine) if polygon.ShadeFlag is set.
-                        CopyVertices(linePolygonVertices[j], new Vector3[0], polygon.ShadeFlag, lineVertexIndices[j].ToArray(), lineTriangleIndices, color, colorInfo, linePolygonNormals[j], vertices, triangles, normals, colors, uv);
+                        CopyVertices(linePolygonVertices[j], new Vector3[0], colorInfo.IsFlatShaded ? false : polygon.ShadeFlag, lineVertexIndices[j].ToArray(), lineTriangleIndices, colorInfo, linePolygonNormals[j], vertices, triangles, normals, uv);
                     }
                 }
                 else
@@ -113,7 +111,7 @@ namespace Assets.Scripts
 
                     var triangleIndices = GetTriangleIndices(polygon.Vertices);
 
-                    CopyVertices(originalVertices, sectionNormals, lodRecord.Colors[i] > 0x80 ? false : polygon.ShadeFlag, vertexIndices, triangleIndices, color, colorInfo, normal, vertices, triangles, normals, colors, uv);
+                    CopyVertices(originalVertices, sectionNormals, colorInfo.IsFlatShaded ? false : polygon.ShadeFlag, vertexIndices, triangleIndices, colorInfo, normal, vertices, triangles, normals, uv);
 
                     if (enableMarkings)
                         SetMarkingsOnMesh(
@@ -123,14 +121,13 @@ namespace Assets.Scripts
                             vertices,
                             markTriangles,
                             normals,
-                            colors,
                             uv,
                             sectionNormals,
                             normal,
                             polygon);
 
                     if (triangleIndices.Length > 0 && polygon.TwoSidedFlag)
-                        CopyVertices(originalVertices, sectionNormals, lodRecord.Colors[i] > 0x80 ? false : polygon.ShadeFlag, vertexIndices, triangleIndices.Reverse().ToArray(), color, colorInfo, -normal, vertices, triangles, normals, colors, uv);
+                        CopyVertices(originalVertices, sectionNormals, colorInfo.IsFlatShaded ? false : polygon.ShadeFlag, vertexIndices, triangleIndices.Reverse().ToArray(), colorInfo, -normal, vertices, triangles, normals, uv);
                 }
             }
 
@@ -154,14 +151,11 @@ namespace Assets.Scripts
                 markingMesh.normals = normals.ToArray();
             }
 
-            //mesh.colors = colors.ToArray();
-            //markingMesh.colors = colors.ToArray();
-
             mesh.uv = uv.ToArray();
             markingMesh.uv = uv.ToArray();
         }
 
-        private void SetMarkingsOnMesh(IEnumerable<MarkRecord> markRecords, int? flightGroupColor, Vector3[] originalVertices, List<Vector3> vertices, List<int> markTriangles, List<Vector3> normals, List<Color> colors, List<Vector2> uv, Vector3[] sectionNormals, Vector3 normal, PolygonLineRecord polygon)
+        private void SetMarkingsOnMesh(IEnumerable<MarkRecord> markRecords, int? flightGroupColor, Vector3[] originalVertices, List<Vector3> vertices, List<int> markTriangles, List<Vector3> normals, List<Vector2> uv, Vector3[] sectionNormals, Vector3 normal, PolygonLineRecord polygon)
         {
             // TODO: terrible; fix
             var markOffset = 0.00f;
@@ -231,7 +225,6 @@ namespace Assets.Scripts
                     return markNormals.ToArray();
                 }
 
-                var markColor = _paletteMapper.GetColor(markRecord.MarkColor);
                 var markColorInfo = _paletteMapper.GetColorInfo(markRecord.MarkColor, flightGroupColor);
 
                 if (dataIndices == 2)
@@ -248,7 +241,7 @@ namespace Assets.Scripts
                         markVertices[1] + Quaternion.LookRotation(markVertices[0] - markVertices[1], normal) * Vector3.right * scaleFactor
                     };
 
-                    CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, lineVertices, CalculateMarkingNormals(lineVertices), polygon.ShadeFlag, markColor, markColorInfo, normal, vertices, markTriangles, normals, colors, uv);
+                    CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, lineVertices, CalculateMarkingNormals(lineVertices), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
                 }
                 else
                 {
@@ -266,14 +259,14 @@ namespace Assets.Scripts
                         vertexRange2.Insert(0, intersectionPoint);
 
                         // First polygon
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange1, CalculateMarkingNormals(vertexRange1), polygon.ShadeFlag, markColor, markColorInfo, normal, vertices, markTriangles, normals, colors, uv);
+                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange1, CalculateMarkingNormals(vertexRange1), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
 
                         // Second polygon 
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange2, CalculateMarkingNormals(vertexRange2), polygon.ShadeFlag, markColor, markColorInfo, normal, vertices, markTriangles, normals, colors, uv);
+                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange2, CalculateMarkingNormals(vertexRange2), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
                     }
                     else
                     {
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, markVertices, CalculateMarkingNormals(markVertices), polygon.ShadeFlag, markColor, markColorInfo, normal, vertices, markTriangles, normals, colors, uv);
+                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, markVertices, CalculateMarkingNormals(markVertices), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
                     }
 
                     bool HasIntersectionPoint(out Vector3 intersection, out int firstSplit, out int secondSplit)
@@ -442,7 +435,7 @@ namespace Assets.Scripts
             return Sides + 2;
         }
 
-        protected void CopyVertices(List<Vector3> originalVertices, Vector3[] sectionNormals, bool shadeFlag, int[] vertexIndices, int[] triangleIndices, Color color, ColorInfo colorInfo, Vector3 normal, List<Vector3> vertices, List<int> triangles, List<Vector3> vertexNormals, List<Color> colors, List<Vector2> uv)
+        protected void CopyVertices(List<Vector3> originalVertices, Vector3[] sectionNormals, bool shadeFlag, int[] vertexIndices, int[] triangleIndices, ColorInfo colorInfo, Vector3 normal, List<Vector3> vertices, List<int> triangles, List<Vector3> vertexNormals, List<Vector2> uv)
         {
             var vertexLookupDictionary = triangleIndices
                 .Distinct()
@@ -462,7 +455,6 @@ namespace Assets.Scripts
             polygonTriangles.AddRange(triangleIndices.Select(x => currentVertexCount + x));
             triangles.AddRange(polygonTriangles);
             vertexNormals.AddRange(currentNormals);
-            colors.AddRange(Enumerable.Repeat(color, currentNormals.Count));
 
             var offset = colorInfo.Index.HasValue
                 ? ((float)colorInfo.Index.Value) / _paletteMapper.PaletteSize
@@ -471,19 +463,19 @@ namespace Assets.Scripts
             uv.AddRange(Enumerable.Repeat(new Vector2(offset, 0), currentNormals.Count));
         }
 
-        protected void CopyVerticesForMarking(bool isTwoSided, float twoSidedOffset, List<Vector3> originalVertices, Vector3[] sectionNormals, bool shadeFlag, Color color, ColorInfo colorInfo, Vector3 normal, List<Vector3> vertices, List<int> triangles, List<Vector3> vertexNormals, List<Color> colors, List<Vector2> uv)
+        protected void CopyVerticesForMarking(bool isTwoSided, float twoSidedOffset, List<Vector3> originalVertices, Vector3[] sectionNormals, bool shadeFlag, ColorInfo colorInfo, Vector3 normal, List<Vector3> vertices, List<int> triangles, List<Vector3> vertexNormals, List<Vector2> uv)
         {
             NormalizeAndReorder(normal, originalVertices);
 
             var markVertexIndices = Enumerable.Range(0, originalVertices.Count).ToArray();
             var markTriangleIndices = GetTriangleIndices(originalVertices.ToArray());
 
-            CopyVertices(originalVertices, sectionNormals.ToArray(), shadeFlag, markVertexIndices, markTriangleIndices, color, colorInfo, normal, vertices, triangles, vertexNormals, colors, uv);
+            CopyVertices(originalVertices, sectionNormals.ToArray(), shadeFlag, markVertexIndices, markTriangleIndices, colorInfo, normal, vertices, triangles, vertexNormals, uv);
 
             if (isTwoSided)
             {
                 var flippedMarkVertices = originalVertices.Select(x => x - normal * twoSidedOffset * 2).ToList();
-                CopyVertices(flippedMarkVertices, sectionNormals.ToArray(), shadeFlag, markVertexIndices.Reverse().ToArray(), markTriangleIndices, color, colorInfo, -normal, vertices, triangles, vertexNormals, colors, uv);
+                CopyVertices(flippedMarkVertices, sectionNormals.ToArray(), shadeFlag, markVertexIndices.Reverse().ToArray(), markTriangleIndices, colorInfo, -normal, vertices, triangles, vertexNormals, uv);
             }
         }
 

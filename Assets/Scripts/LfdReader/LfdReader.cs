@@ -777,12 +777,12 @@ namespace Assets.Scripts.LfdReader
 
     public class MarkRecord
     {
-        public int MarkColor { get; protected set; }
+        public byte MarkColor { get; protected set; }
         public byte MarkType { get; protected set; }
         public byte[] SpecialData { get; protected set; }
         public byte[] Data { get; protected set; }
 
-        public void Read(BinaryReader reader, int color)
+        public void Read(BinaryReader reader, byte color)
         {
             MarkColor = color;
 

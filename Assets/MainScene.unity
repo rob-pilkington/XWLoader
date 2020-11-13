@@ -26,7 +26,7 @@ RenderSettings:
   m_AmbientIntensity: 1
   m_AmbientMode: 3
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_SkyboxMaterial: {fileID: 0}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 1838737846}
-  m_IndirectSpecularColor: {r: 0.44657898, g: 0.4964133, b: 0.5748178, a: 1}
+  m_IndirectSpecularColor: {r: 0, g: 0, b: 0, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -993,8 +993,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9b3fa97ad3bc0d44690a4ca371232ae4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  ShipMaterial: {fileID: 2100000, guid: 9661c10879971274ca9de4b0ff65c75a, type: 2}
-  MarkingMaterial: {fileID: 2100000, guid: 9661c10879971274ca9de4b0ff65c75a, type: 2}
   _baseShip: {fileID: 1273790711052156, guid: 3a5ddea5da1a6974f9ecc6db1be5d140, type: 3}
   _baseSection: {fileID: 1535626322170904, guid: 549e3a51304121b4b919d78d7e3003ec,
     type: 3}
@@ -1011,6 +1009,7 @@ MonoBehaviour:
   xWingCplxWindowsResourcePathInput: {fileID: 35258156}
   tieShipResourcePathInput: {fileID: 1055895412}
   settingsValidationText: {fileID: 1318564982}
+  _light: {fileID: 1838737846}
 --- !u!81 &401361467
 AudioListener:
   m_ObjectHideFlags: 0
@@ -3145,13 +3144,13 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1838737845}
-  m_LocalRotation: {x: 0.40821788, y: -0.23456968, z: 0.10938163, w: 0.8754261}
+  m_LocalRotation: {x: 0.30805978, y: -0.30617577, z: 0.032122068, w: 0.90017986}
   m_LocalPosition: {x: 18.38, y: 11.28, z: 22}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 1
-  m_LocalEulerAnglesHint: {x: 50, y: -30, z: 0}
+  m_LocalEulerAnglesHint: {x: 35.050003, y: -40.478, z: -9.195001}
 --- !u!1 &1863487028
 GameObject:
   m_ObjectHideFlags: 0

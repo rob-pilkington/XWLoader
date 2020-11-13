@@ -21,3 +21,6 @@ Model properties:
 * Backspace: toggle special markings
 * Minus/Equals: previous/next flight group color
 * Backslash: toggle model-defined hardpoint indicators
+
+Other
+* L: toggle light rotation

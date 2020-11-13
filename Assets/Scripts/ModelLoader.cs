@@ -10,9 +10,6 @@ using Assets.Scripts.Palette;
 
 public class ModelLoader : MonoBehaviour
 {
-    public Material ShipMaterial;
-    public Material MarkingMaterial;
-
     private List<LoadedModel> _shipRecords;
     private int _currentRecord = 0;
     private int _currentLod = 0;
@@ -23,7 +20,9 @@ public class ModelLoader : MonoBehaviour
     [SerializeField] private GameObject _baseSection;
     [SerializeField] private GameObject _baseHardpoint;
 
+    private IDictionary<string, GameObject> _baseSections;
     private IDictionary<string, IPaletteMapper> _paletteMappers;
+
     private GameObject _shipContainer;
     private bool inSettingsMenu = true;
 
@@ -40,6 +39,10 @@ public class ModelLoader : MonoBehaviour
     [SerializeField] private InputField tieShipResourcePathInput;
     [SerializeField] private Text settingsValidationText;
 
+    [SerializeField] private Light _light;
+
+    private bool _enableLightRotation = false;
+
     private string xwPaletteFileName;
     private string tiePaletteFileName;
     private string xWingCrftResourcePath;
@@ -51,19 +54,9 @@ public class ModelLoader : MonoBehaviour
 
     private static CoordinateConverter _bigCoordinateConverter = new CoordinateConverter(BaseScaleFactor * 2);
     private static CoordinateConverter _smallCoordinateConverter = new CoordinateConverter(BaseScaleFactor / 2);
-    private static List<Color?> _flightGroupColors = new List<Color?>
+    private static List<Color> _customFlightGroupColors = new List<Color>
     {
-        // Use red color from palette
-        null,
-        // too bright colors
-        Color.blue,
-        Color.yellow,
-        Color.green,
-        // something closer to the colors we'd see in-game, but custom defined
-        new Color32(152, 72, 40, byte.MaxValue), // red
-        new Color32(40, 52, 120, byte.MaxValue), // blue
-        new Color32(140, 104, 24, byte.MaxValue), // gold
-        new Color32(40, 120, 52, byte.MaxValue) // green
+        new Color32(40, 120, 52, 255) // green
     };
 
     // Use this for initialization
@@ -131,13 +124,70 @@ public class ModelLoader : MonoBehaviour
             ["CRFT"] = crftFiles,
             ["CPLX"] = cplxFiles
         };
+        
+        // TODO: these appear in the scene; would be nice to clean up.
+        var xwingBaseSection = Instantiate(_baseSection);
+        var tieFighterBaseSection = Instantiate(_baseSection);
 
-        _paletteMappers = new Dictionary<string, IPaletteMapper>();
-        var xwingPaletteMapper = new XWingPaletteMapper(PaletteMapper.LoadPalette(xwPaletteFileName));
-        var tieFighterPaletteMapper = new TieFighterPaletteMapper(PaletteMapper.LoadPalette(tiePaletteFileName));
-        _paletteMappers.Add("CRFT", xwingPaletteMapper);
-        _paletteMappers.Add("CPLX", xwingPaletteMapper);
-        _paletteMappers.Add("SHIP", tieFighterPaletteMapper);
+        _baseSections = new Dictionary<string, GameObject>()
+        {
+            ["CRFT"] = xwingBaseSection,
+            ["CPLX"] = xwingBaseSection,
+            ["SHIP"] = tieFighterBaseSection
+        };
+
+        // Assumes the first material is the same as all materials in use.
+        var xwingMaterial = new Material(_baseSection.GetComponentInChildren<MeshRenderer>().sharedMaterial);
+        var tieFighterMaterial = new Material(_baseSection.GetComponentInChildren<MeshRenderer>().sharedMaterial);
+
+        //foreach (var name in xwingMaterial.GetTexturePropertyNames())
+        //    Debug.Log($"Texture name: {name}");
+
+        foreach (var meshRenderer in xwingBaseSection.GetComponentsInChildren<MeshRenderer>())
+            meshRenderer.sharedMaterial = xwingMaterial;
+
+        foreach (var meshRenderer in tieFighterBaseSection.GetComponentsInChildren<MeshRenderer>())
+            meshRenderer.sharedMaterial = tieFighterMaterial;
+
+        var xwingPaletteMapper = new XWingPaletteMapper(PaletteMapper.LoadPalette(xwPaletteFileName), _customFlightGroupColors.ToArray());
+        var tieFighterPaletteMapper = new TieFighterPaletteMapper(PaletteMapper.LoadPalette(tiePaletteFileName), _customFlightGroupColors.ToArray());
+
+        _paletteMappers = new Dictionary<string, IPaletteMapper>
+        {
+            ["CRFT"] = xwingPaletteMapper,
+            ["CPLX"] = xwingPaletteMapper,
+            ["SHIP"] = tieFighterPaletteMapper
+        };
+
+        var xwingTexture = xwingPaletteMapper.GeneratePaletteTexture();
+        var xwingSpecularTexture = xwingPaletteMapper.GenerateSpecularMap();
+        var xwingEmissionTexture = xwingPaletteMapper.GenerateEmissionMap();
+
+        xwingMaterial.SetTexture("_MainTex", xwingTexture);
+        //xwingMaterial.SetTexture("_MetallicGlossMap", xwingSpecularTexture);
+        xwingMaterial.SetTexture("_SpecGlossMap", xwingSpecularTexture);
+        xwingMaterial.SetTexture("_EmissionMap", xwingEmissionTexture);
+
+        xwingMaterial.EnableKeyword("_METALLICGLOSSMAP");
+        xwingMaterial.EnableKeyword("_SPECGLOSSMAP");
+        xwingMaterial.EnableKeyword("_EMISSION");
+
+        var tieFighterTexture = tieFighterPaletteMapper.GeneratePaletteTexture();
+        var tieFighterSpecularTexture = tieFighterPaletteMapper.GenerateSpecularMap();
+        var tieFighterEmissionTexture = xwingPaletteMapper.GenerateEmissionMap();
+
+        tieFighterMaterial.SetTexture("_MainTex", tieFighterTexture);
+        //tieFighterMaterial.SetTexture("_MetallicGlossMap", xwingSpecularTexture);
+        tieFighterMaterial.SetTexture("_SpecGlossMap", tieFighterSpecularTexture);
+        tieFighterMaterial.SetTexture("_EmissionMap", tieFighterEmissionTexture);
+
+        tieFighterMaterial.EnableKeyword("_METALLICGLOSSMAP");
+        tieFighterMaterial.EnableKeyword("_SPECGLOSSMAP");
+        tieFighterMaterial.EnableKeyword("_EMISSION");
+
+        // TODO: enable workaround for builds: https://docs.unity3d.com/Manual/MaterialsAccessingViaScript.html
+        // TODO: animate glow
+        // TOOD: get low-intensity glow to look right
 
         _shipRecords = new List<LoadedModel>();
 
@@ -334,14 +384,14 @@ public class ModelLoader : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Minus))
         {
             if (--_currentFlightGroupColorIndex < 0)
-                _currentFlightGroupColorIndex = _flightGroupColors.Count - 1;
+                _currentFlightGroupColorIndex = _customFlightGroupColors.Count + 2; // 3 regular colors + custom colors
 
             LoadShip();
         }
 
         if (Input.GetKeyDown(KeyCode.Equals))
         {
-            if (++_currentFlightGroupColorIndex >= _flightGroupColors.Count)
+            if (++_currentFlightGroupColorIndex >= _customFlightGroupColors.Count + 3) // 3 regular colors + custom colors
                 _currentFlightGroupColorIndex = 0;
 
             LoadShip();
@@ -356,6 +406,15 @@ public class ModelLoader : MonoBehaviour
             foreach (var meshRenderer in meshRenderers)
                 meshRenderer.enabled = !meshRenderer.enabled;
         }
+
+        if (Input.GetKeyDown(KeyCode.L))
+            _enableLightRotation = !_enableLightRotation;
+    }
+
+    private void FixedUpdate()
+    {
+        if (_enableLightRotation)
+            _light.transform.Rotate(Vector3.up, 90 * Time.fixedDeltaTime, Space.World);
     }
 
     public void SaveButtonOnClick()
@@ -522,13 +581,13 @@ public class ModelLoader : MonoBehaviour
 
         var coordinateConverter = isBigShip ? _bigCoordinateConverter : _smallCoordinateConverter;
 
-        MeshCreater meshCreater = new MeshCreater(coordinateConverter, _baseShip, _baseSection, _baseHardpoint, null, ShipMaterial, MarkingMaterial, _paletteMappers[recordType]);
+        MeshCreater meshCreater = new MeshCreater(coordinateConverter, _baseShip, _baseSections[recordType], _baseHardpoint, null, _paletteMappers[recordType]);
 
         sections = FilterSections(recordType, recordName, sections);
 
         var disabledMarkingSectionIndices = _showSpecialMarkings ? new int[0] : GetDisabledMarkingSectionIndices(recordType, recordName);
 
-        _shipContainer = meshCreater.CreateGameObject(sections, sectionHardpoints, _currentLod, _flightGroupColors[_currentFlightGroupColorIndex], disabledMarkingSectionIndices);
+        _shipContainer = meshCreater.CreateGameObject(sections, sectionHardpoints, _currentLod, _currentFlightGroupColorIndex, disabledMarkingSectionIndices);
     }
 
     private static SectionRecord[] FilterSections(string recordType, string recordName, SectionRecord[] sections)

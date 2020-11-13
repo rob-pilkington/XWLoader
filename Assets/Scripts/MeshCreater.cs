@@ -113,7 +113,7 @@ namespace Assets.Scripts
 
                     var triangleIndices = GetTriangleIndices(polygon.Vertices);
 
-                    CopyVertices(originalVertices, sectionNormals, polygon.ShadeFlag, vertexIndices, triangleIndices, _paletteMapper.GetColor(lodRecord.Colors[i], flightGroupColor), normal, vertices, triangles, normals, colors);
+                    CopyVertices(originalVertices, sectionNormals, lodRecord.Colors[i] > 0x80 ? false : polygon.ShadeFlag, vertexIndices, triangleIndices, _paletteMapper.GetColor(lodRecord.Colors[i], flightGroupColor), normal, vertices, triangles, normals, colors);
 
                     if (enableMarkings)
                         SetMarkingsOnMesh(
@@ -129,7 +129,7 @@ namespace Assets.Scripts
                             polygon);
 
                     if (triangleIndices.Length > 0 && polygon.TwoSidedFlag)
-                        CopyVertices(originalVertices, sectionNormals, polygon.ShadeFlag, vertexIndices, triangleIndices.Reverse().ToArray(), _paletteMapper.GetColor(lodRecord.Colors[i], flightGroupColor), -normal, vertices, triangles, normals, colors);
+                        CopyVertices(originalVertices, sectionNormals, lodRecord.Colors[i] > 0x80 ? false : polygon.ShadeFlag, vertexIndices, triangleIndices.Reverse().ToArray(), _paletteMapper.GetColor(lodRecord.Colors[i], flightGroupColor), -normal, vertices, triangles, normals, colors);
                 }
             }
 

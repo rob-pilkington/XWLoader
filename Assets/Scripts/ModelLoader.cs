@@ -431,7 +431,11 @@ public class ModelLoader : MonoBehaviour
                 return "Invalid X-Wing 98 RESOURCE folder";
 
             if (!ValidatePath(tieShipResourcePath, ref isTieResourceProvided, "species.lfd", "species2.lfd", "species3.lfd"))
-                return "Invalid TIE Fighter RESOURCE folder";
+            {
+                // Original XW only had species.lfd
+                if (!ValidatePath(tieShipResourcePath, ref isTieResourceProvided, "species.lfd"))
+                    return "Invalid TIE Fighter RESOURCE folder";
+            }
 
             return string.Empty;
         }

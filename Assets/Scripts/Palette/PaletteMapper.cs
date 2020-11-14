@@ -42,28 +42,28 @@ namespace Assets.Scripts.Palette
         // Create 3 of each color to keep Unity from blending adjacent colors together
         private static Color[] GlowColors = new Color[]
         {
-            Color.red,
-            Color.red,
-            Color.red,
+            new Color(1f, 1f, 1f),
+            new Color(1f, 1f, 1f),
+            new Color(1f, 1f, 1f),
             Color.green,
             Color.green,
             Color.green,
-            Color.blue,
-            Color.blue,
-            Color.blue
+            new Color(1f, 1f, 1f),
+            new Color(1f, 1f, 1f),
+            new Color(1f, 1f, 1f)
         };
 
         private static Color[] BaseGlowColors = new Color[]
         {
-            new Color(0.3f, 0f, 0f),
-            new Color(0.3f, 0f, 0f),
-            new Color(0.3f, 0f, 0f),
-            new Color(0f, 0.3f, 0f),
-            new Color(0f, 0.3f, 0f),
-            new Color(0f, 0.3f, 0f),
-            new Color(0f, 0f, 0.3f),
-            new Color(0f, 0f, 0.3f),
-            new Color(0f, 0f, 0.3f)
+            new Color(1.0f, 0f, 0f),
+            new Color(1.0f, 0f, 0f),
+            new Color(1.0f, 0f, 0f),
+            new Color(0f, 0.0f, 0f),
+            new Color(0f, 0.0f, 0f),
+            new Color(0f, 0.0f, 0f),
+            new Color(0f, 0f, 1.0f),
+            new Color(0f, 0f, 1.0f),
+            new Color(0f, 0f, 1.0f)
         };
 
         protected Color[] _palette;

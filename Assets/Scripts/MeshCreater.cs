@@ -376,6 +376,9 @@ namespace Assets.Scripts
             // TODO: check to see if we should add vertex normals and add them if necessary
             // TODO: paramatarize granularity
             const int Sides = 6;
+            // TODO: this seems to make a lot of lines too big. There may be a bit more going on with line size.
+            //const float LineScaleFactor = 1.75f; // additional tweak fo the line radius for potentially better results. 
+            //radius *= LineScaleFactor;
 
             vertices = new List<List<Vector3>>();
             polygonIndices = new List<List<int>>();
@@ -456,11 +459,7 @@ namespace Assets.Scripts
             triangles.AddRange(polygonTriangles);
             vertexNormals.AddRange(currentNormals);
 
-            var offset = colorInfo.Index.HasValue
-                ? ((float)colorInfo.Index.Value) / _paletteMapper.PaletteSize
-                : 0f;
-
-            uv.AddRange(Enumerable.Repeat(new Vector2(offset, 0), currentNormals.Count));
+            uv.AddRange(Enumerable.Repeat(_paletteMapper.GetUv(colorInfo), currentNormals.Count));
         }
 
         protected void CopyVerticesForMarking(bool isTwoSided, float twoSidedOffset, List<Vector3> originalVertices, Vector3[] sectionNormals, bool shadeFlag, ColorInfo colorInfo, Vector3 normal, List<Vector3> vertices, List<int> triangles, List<Vector3> vertexNormals, List<Vector2> uv)

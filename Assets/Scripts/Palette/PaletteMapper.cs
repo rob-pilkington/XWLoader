@@ -10,80 +10,77 @@ namespace Assets.Scripts.Palette
     {
         int PaletteSize { get; }
         ColorInfo GetColorInfo(byte colorId, int? flightGroupColor);
+        Vector2 GetUv(ColorInfo colorInfo);
     }
 
     public abstract class PaletteMapper : IPaletteMapper
     {
         public PaletteMapper(List<Color> palette, params Color[] customFlightGroupColors)
         {
-            // Repeat the colors to prevent Unity from blending adjacent colors together
-            var repeatedFlightGroupColors = new Color[customFlightGroupColors.Length * 3];
-            for (var i = 0; i < customFlightGroupColors.Length; i++)
-            {
-                repeatedFlightGroupColors[i * 3] = customFlightGroupColors[i];
-                repeatedFlightGroupColors[i * 3 + 1] = customFlightGroupColors[i];
-                repeatedFlightGroupColors[i * 3 + 2] = customFlightGroupColors[i];
-            }
-
             _palette = palette
                 .Concat(BaseGlowColors)
-                .Concat(repeatedFlightGroupColors)
+                .Concat(customFlightGroupColors)
+                // Padding fixed at 256 for now.
+                .Concat(Enumerable.Repeat(Color.black, PaletteWidth - palette.Count - BaseGlowColors.Length - customFlightGroupColors.Length))
+                // second row (entered in reverse order) to match height of 2
+                .Concat(Enumerable.Repeat(Color.black, PaletteWidth))
                 .ToArray();
 
-            GlowStartIndex = palette.Count;
-            GlowRedIndex = GlowStartIndex + 1;
-            GlowGreenIndex = GlowStartIndex + 4;
-            GlowBlueIndex = GlowStartIndex + 7;
+            GlowStartXOffset = palette.Count;
+            GlowRedIndex = GlowStartXOffset;
+            GlowGreenIndex = GlowStartXOffset + 1;
+            GlowBlueIndex = GlowStartXOffset + 2;
 
-            CustomFlightGroupColorStartIndex = palette.Count + BaseGlowColors.Length;
+            CustomFlightGroupColorStartXOffset = palette.Count + BaseGlowColors.Length;
             CustomFlightGroupColorCount = customFlightGroupColors.Length;
         }
 
-        // Create 3 of each color to keep Unity from blending adjacent colors together
         private static Color[] GlowColors = new Color[]
         {
             new Color(1f, 1f, 1f),
-            new Color(1f, 1f, 1f),
-            new Color(1f, 1f, 1f),
             Color.green,
-            Color.green,
-            Color.green,
-            new Color(1f, 1f, 1f),
-            new Color(1f, 1f, 1f),
             new Color(1f, 1f, 1f)
         };
 
         private static Color[] BaseGlowColors = new Color[]
         {
             new Color(1.0f, 0f, 0f),
-            new Color(1.0f, 0f, 0f),
-            new Color(1.0f, 0f, 0f),
             new Color(0f, 0.0f, 0f),
-            new Color(0f, 0.0f, 0f),
-            new Color(0f, 0.0f, 0f),
-            new Color(0f, 0f, 1.0f),
-            new Color(0f, 0f, 1.0f),
             new Color(0f, 0f, 1.0f)
         };
 
         protected Color[] _palette;
 
-        protected abstract int CockpitStartIndex { get; }
+        protected abstract int CockpitStartXOffset { get; }
         protected abstract int CockpitPaletteLength { get; }
 
-        protected int GlowStartIndex { get; private set; }
+        protected int GlowStartXOffset { get; private set; }
         protected int GlowRedIndex { get; private set; }
         protected int GlowGreenIndex { get; private set; }
         protected int GlowBlueIndex { get; private set; }
 
-        protected int CustomFlightGroupColorStartIndex { get; private set; }
+        protected int CustomFlightGroupColorStartXOffset { get; private set; }
         protected int CustomFlightGroupColorCount { get; private set; }
 
         public int PaletteSize => _palette.Length;
 
+        // Constant for now. If we need more custom colors we can increase these and change calculations later.
+        // Will still want powers of 2.
+        private const int PaletteWidth = 256;
+        private const int PaletteHeight = 2;
+
         private static Color ColorFromBytes(byte[] bytes) => new Color(Convert.ToSingle(bytes[0]) / 63, Convert.ToSingle(bytes[1]) / 63, Convert.ToSingle(bytes[2]) / 63);
 
         public abstract ColorInfo GetColorInfo(byte colorId, int? flightGroupColor);
+
+        public Vector2 GetUv(ColorInfo colorInfo)
+        {
+            var offset = colorInfo.Index.HasValue
+                ? (colorInfo.Index.Value + 0.5f) / PaletteWidth
+                : 0f;
+
+            return new Vector2(offset, 0.5f / PaletteHeight);
+        }
 
         protected bool IsFlatShaded(byte colorId) => (colorId & 0x80) != 0;
 
@@ -91,7 +88,7 @@ namespace Assets.Scripts.Palette
 
         public Texture GeneratePaletteTexture()
         {
-            var texture = new Texture2D(PaletteSize, 1);
+            var texture = new Texture2D(PaletteWidth, PaletteHeight);
 
             texture.SetPixels(_palette);
 
@@ -102,10 +99,10 @@ namespace Assets.Scripts.Palette
 
         public Texture GenerateSpecularMap()
         {
-            var texture = new Texture2D(PaletteSize, 1, TextureFormat.RGBA32, false);
+            var texture = new Texture2D(PaletteWidth, PaletteHeight);
 
             texture.SetPixels32(Enumerable.Repeat(new Color32(0, 0, 0, 0), PaletteSize).ToArray());
-            texture.SetPixels32(CockpitStartIndex, 0, CockpitPaletteLength, 1, Enumerable.Repeat(new Color32(0x8f, 0x8f, 0x8f, 0xff), CockpitPaletteLength).ToArray());
+            texture.SetPixels32(CockpitStartXOffset, 0, CockpitPaletteLength, 1, Enumerable.Repeat(new Color32(0x8f, 0x8f, 0x8f, 0xff), CockpitPaletteLength).ToArray());
 
             texture.Apply();
 
@@ -114,10 +111,10 @@ namespace Assets.Scripts.Palette
 
         public Texture GenerateEmissionMap()
         {
-            var texture = new Texture2D(PaletteSize, 1, TextureFormat.RGBA32, false);
+            var texture = new Texture2D(PaletteWidth, PaletteHeight);
 
             texture.SetPixels(Enumerable.Repeat(new Color(0, 0, 0), PaletteSize).ToArray());
-            texture.SetPixels(GlowStartIndex, 0, GlowColors.Length, 1, GlowColors);
+            texture.SetPixels(GlowStartXOffset, 0, GlowColors.Length, 1, GlowColors);
 
             texture.Apply();
 
@@ -169,7 +166,7 @@ namespace Assets.Scripts.Palette
             MidOffset = 11, // Last 12 entries in a large 16-entry palette section
             HighOffset = 15; // Last 8 entries in a large 16-entry palette section (darker)
 
-        protected override int CockpitStartIndex => Cockpit;
+        protected override int CockpitStartXOffset => Cockpit;
         protected override int CockpitPaletteLength => 12;
 
         public override ColorInfo GetColorInfo(byte colorId, int? flightGroupColor)
@@ -209,7 +206,7 @@ namespace Assets.Scripts.Palette
                             var customColor = flightGroupColor.Value - 3;
 
                             if (customColor >= 0 && customColor < CustomFlightGroupColorCount)
-                                return CustomFlightGroupColorStartIndex + (customColor * 3 + 1);
+                                return CustomFlightGroupColorStartXOffset + customColor;
                         }
 
                         return Red + RegularOffset;
@@ -282,7 +279,7 @@ namespace Assets.Scripts.Palette
             MidOffset = 11, // Middle 12 entries in a large 20-entry palette section
             HighOffset = 15; // Last 12 entries in a large 20-entry palette section
 
-        protected override int CockpitStartIndex => Cockpit;
+        protected override int CockpitStartXOffset => Cockpit;
         protected override int CockpitPaletteLength => 6;
 
         public override ColorInfo GetColorInfo(byte colorId, int? flightGroupColor)
@@ -324,7 +321,7 @@ namespace Assets.Scripts.Palette
 
                             var customColor = flightGroupColor.Value - 3;
                             if (customColor >= 0 && customColor < CustomFlightGroupColorCount)
-                                return CustomFlightGroupColorStartIndex + (customColor * 3 + 1);
+                                return CustomFlightGroupColorStartXOffset + customColor;
                         }
 
                         return Red + RegularOffset;

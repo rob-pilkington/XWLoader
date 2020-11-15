@@ -22,7 +22,7 @@ namespace Assets.Scripts.Palette
                 .Concat(customFlightGroupColors)
                 // Padding fixed at 256 for now.
                 .Concat(Enumerable.Repeat(Color.black, PaletteWidth - palette.Count - BaseGlowColors.Length - customFlightGroupColors.Length))
-                // second row (entered in reverse order) to match height of 2
+                // second row to match height of 2
                 .Concat(Enumerable.Repeat(Color.black, PaletteWidth))
                 .ToArray();
 

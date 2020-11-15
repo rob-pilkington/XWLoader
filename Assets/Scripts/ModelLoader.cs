@@ -124,8 +124,8 @@ public class ModelLoader : MonoBehaviour
             ["CRFT"] = crftFiles,
             ["CPLX"] = cplxFiles
         };
-        
-        // TODO: these appear in the scene; would be nice to clean up.
+
+        // TODO: these appear in the scene; would be nice to clean up. A better solution may be to use a MaterialPropertyBlock.
         var xwingBaseSection = Instantiate(_baseSection);
         var tieFighterBaseSection = Instantiate(_baseSection);
 
@@ -185,10 +185,6 @@ public class ModelLoader : MonoBehaviour
         tieFighterMaterial.EnableKeyword("_SPECGLOSSMAP");
         tieFighterMaterial.EnableKeyword("_EMISSION");
 
-        // TODO: enable workaround for builds: https://docs.unity3d.com/Manual/MaterialsAccessingViaScript.html
-        // TODO: animate glow
-        // TOOD: get low-intensity glow to look right
-
         _shipRecords = new List<LoadedModel>();
 
         foreach (var fileGroup in fileGroups)
@@ -234,7 +230,7 @@ public class ModelLoader : MonoBehaviour
                     switch (type)
                     {
                         case "CRFT": return new CrftRecord();
-                        case "CPLX": return new CplxRecord(false);
+                        case "CPLX": return new CplxRecord(fileToLoad.HasWrongEndianLineRadius);
                         case "SHIP": return new ShipRecord();
                         default: throw new NotSupportedException($"Unknown file type: {type}");
                     }

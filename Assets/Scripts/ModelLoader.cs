@@ -16,9 +16,9 @@ public class ModelLoader : MonoBehaviour
     private bool _showSpecialMarkings = true;
     private int _currentFlightGroupColorIndex = 0;
 
-    [SerializeField] private GameObject _baseShip;
-    [SerializeField] private GameObject _baseSection;
-    [SerializeField] private GameObject _baseHardpoint;
+    [SerializeField] private GameObject _baseShip = null;
+    [SerializeField] private GameObject _baseSection = null;
+    [SerializeField] private GameObject _baseHardpoint = null;
 
     private IDictionary<string, GameObject> _baseSections;
     private IDictionary<string, IPaletteMapper> _paletteMappers;
@@ -26,20 +26,20 @@ public class ModelLoader : MonoBehaviour
     private GameObject _shipContainer;
     private bool inSettingsMenu = true;
 
-    [SerializeField] private Text _modelName;
-    [SerializeField] private Text _modelSize;
-    [SerializeField] private Text _modelSections;
+    [SerializeField] private Text _modelName = null;
+    [SerializeField] private Text _modelSize = null;
+    [SerializeField] private Text _modelSections = null;
 
-    [SerializeField] private GameObject settingsPanel;
-    [SerializeField] private InputField xwPalettePathInput;
-    [SerializeField] private InputField tiePalettePathInput;
-    [SerializeField] private InputField xWingCrftResourcePathInput;
-    [SerializeField] private InputField xWingCplxResourcePathInput;
-    [SerializeField] private InputField xWingCplxWindowsResourcePathInput;
-    [SerializeField] private InputField tieShipResourcePathInput;
-    [SerializeField] private Text settingsValidationText;
+    [SerializeField] private GameObject settingsPanel = null;
+    [SerializeField] private InputField xwPalettePathInput = null;
+    [SerializeField] private InputField tiePalettePathInput = null;
+    [SerializeField] private InputField xWingCrftResourcePathInput = null;
+    [SerializeField] private InputField xWingCplxResourcePathInput = null;
+    [SerializeField] private InputField xWingCplxWindowsResourcePathInput = null;
+    [SerializeField] private InputField tieShipResourcePathInput = null;
+    [SerializeField] private Text settingsValidationText = null;
 
-    [SerializeField] private Light _light;
+    [SerializeField] private Light _light = null;
 
     private bool _enableLightRotation = false;
 
@@ -52,9 +52,9 @@ public class ModelLoader : MonoBehaviour
 
     private const float BaseScaleFactor = 0.0244140625f;
 
-    private static CoordinateConverter _bigCoordinateConverter = new CoordinateConverter(BaseScaleFactor * 2);
-    private static CoordinateConverter _smallCoordinateConverter = new CoordinateConverter(BaseScaleFactor / 2);
-    private static List<Color> _customFlightGroupColors = new List<Color>
+    private static readonly CoordinateConverter _bigCoordinateConverter = new CoordinateConverter(BaseScaleFactor * 2);
+    private static readonly CoordinateConverter _smallCoordinateConverter = new CoordinateConverter(BaseScaleFactor / 2);
+    private static readonly List<Color> _customFlightGroupColors = new List<Color>
     {
         new Color32(40, 120, 52, 255) // green
     };
@@ -565,8 +565,7 @@ public class ModelLoader : MonoBehaviour
 
         UpdateUiLabels(record, isBigShip);
 
-        var shipRecord = record.Model as ShipRecord;
-        var sectionHardpoints = shipRecord != null ? shipRecord.SectionHardpoints : new HardpointRecord[0][];
+        var sectionHardpoints = record.Model is ShipRecord shipRecord ? shipRecord.SectionHardpoints : new HardpointRecord[0][];
 
         CreateMesh(record.Type, record.Name, record.Model.Sections, sectionHardpoints, isBigShip);
     }

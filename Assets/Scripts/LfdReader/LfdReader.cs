@@ -254,7 +254,7 @@ namespace Assets.Scripts.LfdReader
 
         public SectionRecord[] Sections { get; protected set; }
 
-        private bool _hasWrongEndianLineRadius;
+        private readonly bool _hasWrongEndianLineRadius;
 
         /// <summary>
         /// A CPLX record
@@ -805,7 +805,7 @@ namespace Assets.Scripts.LfdReader
                 Data = subMark.Data;
             }
             else
-                throw new NotSupportedException($"Unrecognized type: {MarkType.ToString("X")} ({MarkType})");
+                throw new NotSupportedException($"Unrecognized type: {MarkType:X} ({MarkType})");
         }
     }
 

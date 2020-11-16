@@ -35,14 +35,14 @@ namespace Assets.Scripts.Palette
             CustomFlightGroupColorCount = customFlightGroupColors.Length;
         }
 
-        private static Color[] GlowColors = new Color[]
+        private static readonly Color[] GlowColors = new Color[]
         {
             new Color(1f, 1f, 1f),
             Color.green,
             new Color(1f, 1f, 1f)
         };
 
-        private static Color[] BaseGlowColors = new Color[]
+        private static readonly Color[] BaseGlowColors = new Color[]
         {
             new Color(1.0f, 0f, 0f),
             new Color(0f, 0.0f, 0f),

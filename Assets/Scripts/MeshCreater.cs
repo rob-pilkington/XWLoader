@@ -9,12 +9,12 @@ namespace Assets.Scripts
 {
     public class MeshCreater
     {
-        private GameObject _baseObject;
-        private GameObject _baseSection;
-        private GameObject _baseHardpoint;
-        private Transform _baseTransform;
-        private IPaletteMapper _paletteMapper;
-        private CoordinateConverter _coordinateConverter;
+        private readonly GameObject _baseObject;
+        private readonly GameObject _baseSection;
+        private readonly GameObject _baseHardpoint;
+        private readonly Transform _baseTransform;
+        private readonly IPaletteMapper _paletteMapper;
+        private readonly CoordinateConverter _coordinateConverter;
 
         public MeshCreater(CoordinateConverter coordinateConverter, GameObject baseObject, GameObject baseSection, GameObject baseHardpoint, Transform transform, IPaletteMapper paletteMapper)
         {
@@ -33,7 +33,7 @@ namespace Assets.Scripts
             for (var sectionIndex = 0; sectionIndex < sections.Length; sectionIndex++)
             {
                 var section = sections[sectionIndex];
-                var sectionObject = UnityEngine.Object.Instantiate(_baseSection, _baseTransform ?? gameObject.transform);
+                var sectionObject = UnityEngine.Object.Instantiate(_baseSection, _baseTransform != null ? _baseTransform : gameObject.transform);
 
                 var transforms = sectionObject.GetComponentsInChildren<Transform>();
 
@@ -617,42 +617,17 @@ namespace Assets.Scripts
         /// </remarks>
         public static bool AreLineSegmentsCrossing(Vector3 pointA1, Vector3 pointA2, Vector3 pointB1, Vector3 pointB2)
         {
-            Vector3 closestPointA;
-            Vector3 closestPointB;
-            int sideA;
-            int sideB;
+            var lineVecA = pointA2 - pointA1;
+            var lineVecB = pointB2 - pointB1;
 
-            Vector3 lineVecA = pointA2 - pointA1;
-            Vector3 lineVecB = pointB2 - pointB1;
-
-            bool valid = ClosestPointsOnTwoLines(out closestPointA, out closestPointB, pointA1, lineVecA.normalized, pointB1, lineVecB.normalized);
-
-            // lines are not parallel
-            if (valid)
-            {
-
-                sideA = PointOnWhichSideOfLineSegment(pointA1, pointA2, closestPointA);
-                sideB = PointOnWhichSideOfLineSegment(pointB1, pointB2, closestPointB);
-
-                if ((sideA == 0) && (sideB == 0))
-                {
-
-                    return true;
-                }
-
-                else
-                {
-
-                    return false;
-                }
-            }
-
-            // lines are parallel
-            else
-            {
-
-                return false;
-            }
+            bool valid = ClosestPointsOnTwoLines(out var closestPointA, out var closestPointB, pointA1, lineVecA.normalized, pointB1, lineVecB.normalized);
+            
+            return valid
+                // lines are not parallel
+                ? (PointOnWhichSideOfLineSegment(pointA1, pointA2, closestPointA) == 0)
+                    && (PointOnWhichSideOfLineSegment(pointB1, pointB2, closestPointB) == 0)
+                // lines are parallel
+                : false;
         }
 
         /// <remarks>

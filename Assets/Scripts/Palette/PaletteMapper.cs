@@ -11,6 +11,9 @@ namespace Assets.Scripts.Palette
         int PaletteSize { get; }
         ColorInfo GetColorInfo(byte colorId, int? flightGroupColor);
         Vector2 GetUv(ColorInfo colorInfo);
+        Texture GeneratePaletteTexture();
+        Texture GenerateSpecularMap();
+        Texture GenerateEmissionMap();
     }
 
     public abstract class PaletteMapper : IPaletteMapper

@@ -20,7 +20,7 @@ public class ModelLoader : MonoBehaviour
     [SerializeField] private GameObject _baseSection = null;
     [SerializeField] private GameObject _baseHardpoint = null;
 
-    private IDictionary<string, GameObject> _baseSections;
+    private IDictionary<string, MaterialPropertyBlock> _materialPropertyBlocks;
     private IDictionary<string, IPaletteMapper> _paletteMappers;
 
     private GameObject _shipContainer;
@@ -125,30 +125,6 @@ public class ModelLoader : MonoBehaviour
             ["CPLX"] = cplxFiles
         };
 
-        // TODO: these appear in the scene; would be nice to clean up. A better solution may be to use a MaterialPropertyBlock.
-        var xwingBaseSection = Instantiate(_baseSection);
-        var tieFighterBaseSection = Instantiate(_baseSection);
-
-        _baseSections = new Dictionary<string, GameObject>()
-        {
-            ["CRFT"] = xwingBaseSection,
-            ["CPLX"] = xwingBaseSection,
-            ["SHIP"] = tieFighterBaseSection
-        };
-
-        // Assumes the first material is the same as all materials in use.
-        var xwingMaterial = new Material(_baseSection.GetComponentInChildren<MeshRenderer>().sharedMaterial);
-        var tieFighterMaterial = new Material(_baseSection.GetComponentInChildren<MeshRenderer>().sharedMaterial);
-
-        //foreach (var name in xwingMaterial.GetTexturePropertyNames())
-        //    Debug.Log($"Texture name: {name}");
-
-        foreach (var meshRenderer in xwingBaseSection.GetComponentsInChildren<MeshRenderer>())
-            meshRenderer.sharedMaterial = xwingMaterial;
-
-        foreach (var meshRenderer in tieFighterBaseSection.GetComponentsInChildren<MeshRenderer>())
-            meshRenderer.sharedMaterial = tieFighterMaterial;
-
         var xwingPaletteMapper = new XWingPaletteMapper(PaletteMapper.LoadPalette(xwPaletteFileName), _customFlightGroupColors.ToArray());
         var tieFighterPaletteMapper = new TieFighterPaletteMapper(PaletteMapper.LoadPalette(tiePaletteFileName), _customFlightGroupColors.ToArray());
 
@@ -159,31 +135,24 @@ public class ModelLoader : MonoBehaviour
             ["SHIP"] = tieFighterPaletteMapper
         };
 
-        var xwingTexture = xwingPaletteMapper.GeneratePaletteTexture();
-        var xwingSpecularTexture = xwingPaletteMapper.GenerateSpecularMap();
-        var xwingEmissionTexture = xwingPaletteMapper.GenerateEmissionMap();
+        var xwingMaterialPropertyBlock = new MaterialPropertyBlock();
+        var tieFighterMaterialPropertyBlock = new MaterialPropertyBlock();
 
-        xwingMaterial.SetTexture("_MainTex", xwingTexture);
-        //xwingMaterial.SetTexture("_MetallicGlossMap", xwingSpecularTexture);
-        xwingMaterial.SetTexture("_SpecGlossMap", xwingSpecularTexture);
-        xwingMaterial.SetTexture("_EmissionMap", xwingEmissionTexture);
+        // Assumes the first material is the same as all materials in use.
+        var material = _baseSection.GetComponentInChildren<MeshRenderer>().sharedMaterial;
+        material.EnableKeyword("_METALLICGLOSSMAP");
+        material.EnableKeyword("_SPECGLOSSMAP");
+        material.EnableKeyword("_EMISSION");
 
-        xwingMaterial.EnableKeyword("_METALLICGLOSSMAP");
-        xwingMaterial.EnableKeyword("_SPECGLOSSMAP");
-        xwingMaterial.EnableKeyword("_EMISSION");
+        _materialPropertyBlocks = new Dictionary<string, MaterialPropertyBlock>()
+        {
+            ["CRFT"] = xwingMaterialPropertyBlock,
+            ["CPLX"] = xwingMaterialPropertyBlock,
+            ["SHIP"] = tieFighterMaterialPropertyBlock
+        };
 
-        var tieFighterTexture = tieFighterPaletteMapper.GeneratePaletteTexture();
-        var tieFighterSpecularTexture = tieFighterPaletteMapper.GenerateSpecularMap();
-        var tieFighterEmissionTexture = xwingPaletteMapper.GenerateEmissionMap();
-
-        tieFighterMaterial.SetTexture("_MainTex", tieFighterTexture);
-        //tieFighterMaterial.SetTexture("_MetallicGlossMap", xwingSpecularTexture);
-        tieFighterMaterial.SetTexture("_SpecGlossMap", tieFighterSpecularTexture);
-        tieFighterMaterial.SetTexture("_EmissionMap", tieFighterEmissionTexture);
-
-        tieFighterMaterial.EnableKeyword("_METALLICGLOSSMAP");
-        tieFighterMaterial.EnableKeyword("_SPECGLOSSMAP");
-        tieFighterMaterial.EnableKeyword("_EMISSION");
+        SetupMaterialPropertyBlock(xwingMaterialPropertyBlock, xwingPaletteMapper);
+        SetupMaterialPropertyBlock(tieFighterMaterialPropertyBlock, tieFighterPaletteMapper);
 
         _shipRecords = new List<LoadedModel>();
 
@@ -239,6 +208,18 @@ public class ModelLoader : MonoBehaviour
         }
 
         LoadShip();
+    }
+
+    static void SetupMaterialPropertyBlock(MaterialPropertyBlock materialPropertyBlock, IPaletteMapper paletteMapper)
+    {
+        var texture = paletteMapper.GeneratePaletteTexture();
+        var specularTexture = paletteMapper.GenerateSpecularMap();
+        var emissionTexture = paletteMapper.GenerateEmissionMap();
+
+        materialPropertyBlock.SetTexture("_MainTex", texture);
+        //materialPropertyBlock.SetTexture("_MetallicGlossMap", specularTexture);
+        materialPropertyBlock.SetTexture("_SpecGlossMap", specularTexture);
+        materialPropertyBlock.SetTexture("_EmissionMap", emissionTexture);
     }
 
     // Update is called once per frame
@@ -576,13 +557,17 @@ public class ModelLoader : MonoBehaviour
 
         var coordinateConverter = isBigShip ? _bigCoordinateConverter : _smallCoordinateConverter;
 
-        MeshCreater meshCreater = new MeshCreater(coordinateConverter, _baseShip, _baseSections[recordType], _baseHardpoint, null, _paletteMappers[recordType]);
+        MeshCreater meshCreater = new MeshCreater(coordinateConverter, _baseShip, _baseSection, _baseHardpoint, null, _paletteMappers[recordType]);
 
         sections = FilterSections(recordType, recordName, sections);
 
         var disabledMarkingSectionIndices = _showSpecialMarkings ? new int[0] : GetDisabledMarkingSectionIndices(recordType, recordName);
 
         _shipContainer = meshCreater.CreateGameObject(sections, sectionHardpoints, _currentLod, _currentFlightGroupColorIndex, disabledMarkingSectionIndices);
+
+        foreach (var meshRenderer in _shipContainer.GetComponentsInChildren<MeshRenderer>())
+            if (meshRenderer.name == "Geometry" || meshRenderer.name == "Marking")
+                meshRenderer.SetPropertyBlock(_materialPropertyBlocks[recordType]);
     }
 
     private static SectionRecord[] FilterSections(string recordType, string recordName, SectionRecord[] sections)

@@ -173,6 +173,7 @@ namespace Assets.Scripts
                     continue;
 
                 var markVertices = new List<Vector3>();
+                var markOrigTri = new List<int[]>();    // The indices of the original triangles the mark point came from
                 for (var dataIndex = 0; dataIndex < dataIndices * 3; dataIndex += 3)
                 {
                     var index = (markRecord.Data[dataIndex] / 2 - 1) % polygon.VertexIndices.Length;
@@ -201,21 +202,27 @@ namespace Assets.Scripts
                     vertex += normal * markOffset;
 
                     markVertices.Add(vertex);
+                    int[] OrigIndices = { polygon.VertexIndices[index], polygon.VertexIndices[leftVertexIndex], polygon.VertexIndices[rightVertexIndex] };
+                    markOrigTri.Add(OrigIndices);
                 }
 
-                Vector3[] CalculateMarkingNormals(List<Vector3> verticesToUse)
+                Vector3[] CalculateMarkingNormals(List<Vector3> verticesToUse, List<int []> verticesSurround)
                 {
                     if (sectionNormals.Length == 0 || !polygon.ShadeFlag)
                         return new Vector3[0];
 
                     var markNormals = new List<Vector3>();
 
-                    foreach (var vertex in verticesToUse)
+                    for (int i = 0; i < verticesToUse.Count; i++)
                     {
+                        var vertex = verticesToUse[i];
+                        var origTri = markOrigTri[i];
+
                         var markNormal = Vector3.zero;
 
                         //markNormal = AzrapseNormalInterpolation(originalVertices, sectionNormals, polygon, vertex, markNormal);
-                        markNormal = RobNormalInterpolation(originalVertices, sectionNormals, polygon, vertex, markNormal);
+                        //markNormal = RobNormalInterpolation(originalVertices, sectionNormals, polygon, vertex, markNormal);
+                        markNormal = LardoNormalInterpolation(originalVertices, sectionNormals, polygon, vertex, markNormal, origTri);
 
                         markNormal.Normalize();
 
@@ -240,8 +247,14 @@ namespace Assets.Scripts
                         markVertices[1] + Quaternion.LookRotation(markVertices[0] - markVertices[1], normal) * Vector3.left * scaleFactor,
                         markVertices[1] + Quaternion.LookRotation(markVertices[0] - markVertices[1], normal) * Vector3.right * scaleFactor
                     };
+                    
+                    // We have two points for the normals, work with what we have
+                    List<Vector3> lineNormals = CalculateMarkingNormals(markVertices, markOrigTri).ToList();
 
-                    CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, lineVertices, CalculateMarkingNormals(lineVertices), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
+                    lineNormals.Insert(0, lineNormals[0]);
+                    lineNormals.Insert(2, lineNormals[2]);
+
+                    CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, lineVertices, lineNormals.ToArray(), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
                 }
                 else
                 {
@@ -253,20 +266,26 @@ namespace Assets.Scripts
                         var vertexRange1 = markVertices.Take(splitPoint1).ToList();
                         var vertexRange2 = markVertices.Skip(splitPoint1).Take(splitPoint2 - splitPoint1).ToList();
 
+                        // Hack for the new normal code:
+                        // This assumes that the intersecting lines won't deviate from the parent tri normals too much. Hacky.
+                        var markOrigTriRange1 = markOrigTri.Take(splitPoint1).ToList();
+                        var markOrigTriRange2 = markOrigTri.Take(splitPoint1).ToList();
+
                         vertexRange1.Add(intersectionPoint);
                         vertexRange1.AddRange(markVertices.Skip(splitPoint2));
 
                         vertexRange2.Insert(0, intersectionPoint);
 
+
                         // First polygon
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange1, CalculateMarkingNormals(vertexRange1), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
+                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange1, CalculateMarkingNormals(vertexRange1, markOrigTriRange1), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
 
                         // Second polygon 
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange2, CalculateMarkingNormals(vertexRange2), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
+                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange2, CalculateMarkingNormals(vertexRange2, markOrigTriRange2), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
                     }
                     else
                     {
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, markVertices, CalculateMarkingNormals(markVertices), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
+                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, markVertices, CalculateMarkingNormals(markVertices, markOrigTri), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
                     }
 
                     bool HasIntersectionPoint(out Vector3 intersection, out int firstSplit, out int secondSplit)
@@ -347,6 +366,56 @@ namespace Assets.Scripts
         {
             foreach (var otherVertexIndex in polygon.VertexIndices)
                 markNormal += sectionNormals[otherVertexIndex] / Vector3.Distance(originalVertices[otherVertexIndex], vertex);
+            return markNormal;
+        }
+
+        private static Vector3 LardoNormalInterpolation(Vector3[] originalVertices, Vector3[] sectionNormals, PolygonLineRecord polygon, Vector3 vertex, Vector3 markNormal, int[] verticesSurround)
+        {
+           
+            // Get the barycentric coordinates of this point
+            Vector3 a = originalVertices[verticesSurround[0]];
+            Vector3 b = originalVertices[verticesSurround[1]];
+            Vector3 c = originalVertices[verticesSurround[2]];
+
+            // Firstly flatten down this point back to the face plane
+            Plane FacePlane = new Plane(a, b, c);
+            
+            float Offset = FacePlane.GetDistanceToPoint(vertex);
+
+            vertex -= FacePlane.normal * Offset;    // Reverse the offset added earlier for the overlay hack
+
+            Vector3 n0 = sectionNormals[verticesSurround[0]];
+            Vector3 n1 = sectionNormals[verticesSurround[1]];
+            Vector3 n2 = sectionNormals[verticesSurround[2]];
+
+            Vector3 v0 = b - a, v1 = c - a, v2 = vertex - a;
+
+            float d00 = Vector3.Dot(v0, v0);
+            float d01 = Vector3.Dot(v0, v1);
+            float d11 = Vector3.Dot(v1, v1);
+            float d20 = Vector3.Dot(v2, v0);
+            float d21 = Vector3.Dot(v2, v1);
+            float denom = d00 * d11 - d01 * d01;
+            float v = (d11 * d20 - d01 * d21) / denom,
+                w = (d00 * d21 - d01 * d20) / denom,
+                u = 1f - v - w;
+
+            // Clamp the values. Introduces some slight error for line markings which overshoot but we normalize at the end anyway
+            if (u < 0f)
+                u = 0f;
+            if (u > 1f)
+                u = 1f;
+            if (v < 0f)
+                v = 0f;
+            if (v > 1f)
+                v = 1f;
+            if (w < 0f)
+                w = 0f;
+            if (w > 1f)
+                w = 1f;
+
+            markNormal = new Vector3(n0.x * u + n1.x * v + n2.x * w, n0.y * u + n1.y * v + n2.y * w, n0.z * u + n1.z * v + n2.z * w);
+
             return markNormal;
         }
 
@@ -469,12 +538,12 @@ namespace Assets.Scripts
             var markVertexIndices = Enumerable.Range(0, originalVertices.Count).ToArray();
             var markTriangleIndices = GetTriangleIndices(originalVertices.ToArray());
 
-            CopyVertices(originalVertices, sectionNormals.ToArray(), shadeFlag, markVertexIndices, markTriangleIndices, colorInfo, normal, vertices, triangles, vertexNormals, uv);
+            CopyVertices(originalVertices, sectionNormals, shadeFlag, markVertexIndices, markTriangleIndices, colorInfo, normal, vertices, triangles, vertexNormals, uv);
 
             if (isTwoSided)
             {
                 var flippedMarkVertices = originalVertices.Select(x => x - normal * twoSidedOffset * 2).ToList();
-                CopyVertices(flippedMarkVertices, sectionNormals.ToArray(), shadeFlag, markVertexIndices.Reverse().ToArray(), markTriangleIndices, colorInfo, -normal, vertices, triangles, vertexNormals, uv);
+                CopyVertices(flippedMarkVertices, sectionNormals, shadeFlag, markVertexIndices.Reverse().ToArray(), markTriangleIndices, colorInfo, -normal, vertices, triangles, vertexNormals, uv);
             }
         }
 

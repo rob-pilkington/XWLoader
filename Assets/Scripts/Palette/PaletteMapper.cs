@@ -346,14 +346,15 @@ namespace Assets.Scripts.Palette
 
                     case 0x10: return Cockpit + SmallOffset;
                     case 0x1a: return Red + RegularOffset;
-                    case 0x1c: return Blue + RegularOffset;
-                    case 0x1d: return ImperialGray + LowOffset;
-                    case 0x1e: return RebelBeige + MidOffset;
+
+                    case 0x1c: return ImperialBlue + LowOffset + 1;
+                    case 0x1d: return ImperialGray + LowOffset + 1;
+                    case 0x1e: return RebelBeige + LowOffset + 1;
                     case 0x1f: return Gray + LowOffset + 1;
 
-                    case 0x20: return ImperialBlue + MidOffset;
-                    case 0x21: return ImperialGray + MidOffset;
-                    case 0x22: return RebelBeige + LowOffset;
+                    case 0x20: return ImperialBlue + LowOffset + 2;
+                    case 0x21: return ImperialGray + LowOffset + 2;
+                    case 0x22: return RebelBeige + LowOffset + 2;
                     case 0x23: return Gray + LowOffset + 2;
                     case 0x24: return ImperialBlue + MidOffset - 1;
                     case 0x25: return ImperialGray + MidOffset - 1;

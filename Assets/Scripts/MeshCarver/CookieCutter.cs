@@ -18,14 +18,67 @@ namespace PolygonCutter
         public Plane [] Faces;
         private bool[] FaceInternal;    // Some faces are internal
         private int[] FaceOpposite;
+        public int[] FaceCuts;
 
         public Vector3Line[] Edges;
         public int[] EdgeIndex; // Each triangle has 3 line edges
         private bool[] EdgeInternal;    // Some edges are internal
         private int[] EdgeVertOriginal; // The original vertex which generated this edge
+        private Vector3[] BuildVertOriginal;
 
-        private Plane[] StashedFaces;
+        private Plane [] StashedFaces;
+        private Vector3[] StashedEdgeOrigin;
         public float StashFaceThreshold = 0.01f;
+
+        public static CookieCutter MakeCC(List<Vector3> v3Triangles, Vector3 FaceNormal)
+        {
+            List<Triangle> triBuildup = new List<Triangle>();
+            List<Vector3> PolyMesh = new List<Vector3>();
+            
+            for (int i = 0; i < v3Triangles.Count; i += 3)
+            {
+                int V0 = PolyMesh.IndexOf(v3Triangles[i]);
+                int V1 = PolyMesh.IndexOf(v3Triangles[i + 1]);
+                int V2 = PolyMesh.IndexOf(v3Triangles[i + 2]);
+
+                if (V0 == -1)
+                {
+                    V0 = PolyMesh.Count;
+                    PolyMesh.Add(v3Triangles[i]);
+                }
+
+                if (V1 == -1)
+                {
+                    V1 = PolyMesh.Count;
+                    PolyMesh.Add(v3Triangles[i + 1]);
+                }
+
+                if (V2 == -1)
+                {
+                    V2 = PolyMesh.Count;
+                    PolyMesh.Add(v3Triangles[i + 2]);
+                }
+
+                Triangle t = new Triangle(V0, V1, V2, FaceNormal);
+                triBuildup.Add(t);
+            }
+
+            // Make sure the triangles have the correct face direction
+            foreach (Triangle t in triBuildup)
+            {
+                if (Vector3.Dot(Vector3.Cross(PolyMesh[t.VertexIndex[1]] - PolyMesh[t.VertexIndex[0]], PolyMesh[t.VertexIndex[2]] - PolyMesh[t.VertexIndex[0]]), FaceNormal) < 0f)
+                {
+                    // This triangle is not facing the direction it should. Reverse it.
+                    int V1 = t.VertexIndex[2];
+                    int V2 = t.VertexIndex[1];
+
+                    t.VertexIndex[1] = V1;
+                    t.VertexIndex[2] = V2;
+                }
+            }
+
+            return new CookieCutter(PolyMesh, triBuildup, FaceNormal);
+        }
 
         /// <summary>
         /// Returns a new cookie cutter based off the triangle and the normal along which to project the face cuts. All polygons which make up a cookie cutter must share at least 2 verts with another polygon in the triangle list
@@ -36,19 +89,25 @@ namespace PolygonCutter
             StashedFaces = new Plane[triangles.Count * 3];  // For dealing with cut faces which are flat up against a triangle edge
 
             Edges = new Vector3Line[triangles.Count * 3];   // Maximum, we might not use them all
+            StashedEdgeOrigin = new Vector3[triangles.Count * 3];
 
             FaceInternal = new bool[triangles.Count * 3];
             FaceOpposite = new int[triangles.Count * 3];
+            FaceCuts = new int[triangles.Count * 3];
 
             EdgeIndex = new int[triangles.Count * 3];
             EdgeInternal = new bool[triangles.Count * 3];
             EdgeVertOriginal = new int[triangles.Count * 3];
+            BuildVertOriginal = new Vector3[triangles.Count * 3];
 
             for (int i = 0; i < EdgeVertOriginal.Length; i++)
                 EdgeVertOriginal[i] = -1;   // Ensure none of these are used
 
             for (int i = 0; i < FaceOpposite.Length; i++)
+            {
                 FaceOpposite[i] = -1;
+                FaceCuts[i] = 0;
+            }
 
             // Each triangle in the cookie cutter generates a prism with 3 faces and 3 edges
             for (int i = 0; i < triangles.Count; i++)
@@ -79,8 +138,13 @@ namespace PolygonCutter
 
                 EdgeIndex[i * 3 + 2] = FindEdge(t.VertexIndex[2], V2, V2p);
                 EdgeVertOriginal[i * 3 + 2] = t.VertexIndex[2];
+
+                BuildVertOriginal[i * 3 + 0] = V0;
+                BuildVertOriginal[i * 3 + 1] = V1;
+                BuildVertOriginal[i * 3 + 2] = V2;
             }
 
+            int iInternalCount = 0;
             // Determine if a face is internal
             for (int i = 0; i < triangles.Count; i++)
             {
@@ -91,26 +155,70 @@ namespace PolygonCutter
                 int iOpposite = FindEdgeCCW(t.VertexIndex[0], t.VertexIndex[1]);
                 if (iOpposite > -1)
                 {
+                    iInternalCount++;
                     FaceInternal[i * 3 + 0] = true;
-                    FaceOpposite[i * 3 + 0] = i;
+                    FaceOpposite[i * 3 + 0] = iOpposite;
                 }
 
                 iOpposite = FindEdgeCCW(t.VertexIndex[1], t.VertexIndex[2]);
                 if (iOpposite > -1)
                 {
+                    iInternalCount++;
                     FaceInternal[i * 3 + 1] = true;
-                    FaceOpposite[i * 3 + 1] = i;
+                    FaceOpposite[i * 3 + 1] = iOpposite;
                 }
 
                 iOpposite = FindEdgeCCW(t.VertexIndex[2], t.VertexIndex[0]);
                 if (iOpposite > -1)
                 {
+                    iInternalCount++;
                     FaceInternal[i * 3 + 2] = true;
-                    FaceOpposite[i * 3 + 2] = i;
+                    FaceOpposite[i * 3 + 2] = iOpposite;
                 }
             }
 
+            if (iInternalCount != (triangles.Count - 1) * 2)
+            {
+                Console.WriteLine("Breakpoint");
+            }
+
             // Determine if an edge is internal? Necessary?
+        }
+
+        private bool CutterIsOnPlane(Plane p)
+        {
+            float Tolerance = 0.001f;
+            for (int i = 0; i < Edges.Length; i++)
+            {
+                if (Edges[i] == null)
+                    continue;
+
+                float Score = Math.Abs(p.PointValue(Edges[i].Origin()));
+
+                if (Score > Tolerance)
+                    return false;
+            }
+
+            return true;
+        }
+
+        private void ReseatCutterOnPlane(Plane p)
+        {
+            for(int i = 0; i < Edges.Length; i++)
+            {
+                if (Edges[i] == null)
+                    continue;
+
+                Vector3Line InterceptLine = new Vector3Line(Edges[i]);
+                InterceptLine.x = BuildVertOriginal[i].x;
+                InterceptLine.y = BuildVertOriginal[i].y;
+                InterceptLine.z = BuildVertOriginal[i].z;
+
+                Vector3 vNewOrigin = InterceptLine.IntersectPlane(p);
+                Edges[i].x = vNewOrigin.x;
+                Edges[i].y = vNewOrigin.y;
+                Edges[i].z = vNewOrigin.z;
+            }
         }
 
         /// <summary>
@@ -119,32 +227,143 @@ namespace PolygonCutter
         /// <param name="V0"></param>
         /// <param name="V1"></param>
         /// <param name="V2"></param>
-        public void StashFaces(Vector3 V0, Vector3 V1, Vector3 V2)
+        public void StashFaces(Vector3 V0, Vector3 V1, Vector3 V2, bool CullExternalTriangles)
         {
             Vector3 vCentre = (V0 + V1 + V2) / 3;
+            Vector3Line TriLine01 = new Vector3Line(V0, V1);
+            Vector3Line TriLine12 = new Vector3Line(V1, V2);
+            Vector3Line TriLine20 = new Vector3Line(V2, V0);
+
+            if (!CutterIsOnPlane(new Plane(V0, V1, V2)))
+                ReseatCutterOnPlane(new Plane(V0, V1, V2));
+
+            bool Changes = false;
 
             for (int i = 0; i < Faces.Length; i++)
             {
+                if (FaceInternal[i])
+                    continue;
+
                 float PV0 = Math.Abs(Faces[i].PointValue(V0));
                 float PV1 = Math.Abs(Faces[i].PointValue(V1));
                 float PV2 = Math.Abs(Faces[i].PointValue(V2));
 
-                if ((PV0 < StashFaceThreshold && PV1 < StashFaceThreshold) || (PV1 < StashFaceThreshold && PV2 < StashFaceThreshold) || (PV2 < StashFaceThreshold && PV0 < StashFaceThreshold))
+                bool TriEdge0 = (PV0 < StashFaceThreshold && PV1 < StashFaceThreshold);
+                bool TriEdge1 = (PV1 < StashFaceThreshold && PV2 < StashFaceThreshold);
+                bool TriEdge2 = (PV2 < StashFaceThreshold && PV0 < StashFaceThreshold);
+
+                // Get the two edge lines for this face
+                int CurrentEdgeIndex = EdgeIndex[i];
+                int NextEdgeIndex = EdgeIndex[FindNextEdge(CurrentEdgeIndex)];
+
+                // There is a condition where the faces indicate that we aren't close but the actual point are on an almost perfect straight line
+                float Line01CDistance, Line01NDistance;
+                Vector3 v3Line01C = TriLine01.FindNearestPoint(Edges[CurrentEdgeIndex].Origin(), out Line01CDistance);
+                Vector3 v3Line01N = TriLine01.FindNearestPoint(Edges[NextEdgeIndex].Origin(), out Line01NDistance);
+
+                float Line12CDistance, Line12NDistance;
+                Vector3 v3Line12C = TriLine12.FindNearestPoint(Edges[CurrentEdgeIndex].Origin(), out Line12CDistance);
+                Vector3 v3Line12N = TriLine12.FindNearestPoint(Edges[NextEdgeIndex].Origin(), out Line12NDistance);
+
+                float Line20CDistance, Line20NDistance;
+                Vector3 v3Line20C = TriLine20.FindNearestPoint(Edges[CurrentEdgeIndex].Origin(), out Line20CDistance);
+                Vector3 v3Line20N = TriLine20.FindNearestPoint(Edges[NextEdgeIndex].Origin(), out Line20NDistance);
+
+                if (Line01CDistance > -0.001f && Line01CDistance < 1.001f && Line01NDistance > -0.001f && Line01NDistance < 1.001f && (v3Line01C - Edges[CurrentEdgeIndex].Origin()).Len() < StashFaceThreshold && (v3Line01N - Edges[NextEdgeIndex].Origin()).Len() < StashFaceThreshold)
+                {
+                    // Both cutter edges are very close to the triangle edge 01, TriEdge0 should be true
+                    TriEdge0 = true;
+                }
+
+                if (Line12CDistance > -0.001f && Line12CDistance < 1.001f && Line12NDistance > -0.001f && Line12NDistance < 1.001f && (v3Line12C - Edges[CurrentEdgeIndex].Origin()).Len() < StashFaceThreshold && (v3Line12N - Edges[NextEdgeIndex].Origin()).Len() < StashFaceThreshold)
+                {
+                    // Both cutter edges are very close to the triangle edge 01, TriEdge0 should be true
+                    TriEdge1 = true;
+                }
+
+                if (Line20CDistance > -0.001f && Line20CDistance < 1.001f && Line20NDistance > -0.001f && Line20NDistance < 1.001f && (v3Line20C - Edges[CurrentEdgeIndex].Origin()).Len() < StashFaceThreshold && (v3Line20N - Edges[NextEdgeIndex].Origin()).Len() < StashFaceThreshold)
+                {
+                    // Both cutter edges are very close to the triangle edge 01, TriEdge0 should be true
+                    TriEdge2 = true;
+                }
+
+
+                if (TriEdge0 && TriEdge1 && TriEdge2)
+                {
+                    // Sliver triangles - find the lowest 2 triangles and handle correctly.
+                    if (PV0 <= PV2 && PV1 <= PV2)
+                    {
+                        TriEdge1 = false;
+                        TriEdge2 = false;
+                    } else if (PV1 <= PV0 && PV2 <= PV0)
+                    {
+                        TriEdge0 = false;
+                        TriEdge2 = false;
+                    } else
+                    {
+                        TriEdge1 = false;
+                        TriEdge0 = false;
+                    }    
+                }
+
+                if (TriEdge0 || TriEdge1 || TriEdge2)
                 {
                     // Stash this edge slightly outwards
                     float Dir = Faces[i].PointValue(vCentre);
-                    if (Dir < 0f)
+                    if (Dir < 0f)// ^ CullExternalTriangles)
                     {
                         StashedFaces[i] = Faces[i];
-                        Faces[i] = new Plane(Faces[i].a, Faces[i].b, Faces[i].c, Faces[i].d - 2f);
+                        Faces[i] = new Plane(Faces[i].a, Faces[i].b, Faces[i].c, Faces[i].d - 0.1f);    // Offset by 10cm
                     }
                     else
                     {
                         StashedFaces[i] = Faces[i];
-                        Faces[i] = new Plane(Faces[i].a, Faces[i].b, Faces[i].c, Faces[i].d + 2f);
+                        Faces[i] = new Plane(Faces[i].a, Faces[i].b, Faces[i].c, Faces[i].d + 0.1f);    // Offset by 10cm
                     }
-                    
+
+                    Changes = true;
                 }
+            }
+
+            if (Changes)
+                CreateNewStashedFaces();
+        }
+
+        private void CreateNewStashedFaces()
+        {
+            // Now take a copy of all the edge origins
+            for (int i = 0; i < Edges.Length; i++)
+            {
+                if (Edges[i] == null)
+                    continue;
+
+                Vector3Line v3lNew = GetStashedEdgeLine(i);
+                StashedEdgeOrigin[i] = Edges[i].Origin();
+
+                Edges[i].x = v3lNew.x;
+                Edges[i].y = v3lNew.y;
+                Edges[i].z = v3lNew.z;
+            }
+
+            // Now that we have moved (or not moved) the edges to their new positions, recreate the cut faces so that we maintain the prisms
+            for (int i = 0; i < Edges.Length; i += 3)
+            {
+                // Generate the 3 faces
+                Vector3 V0 = Edges[EdgeIndex[i + 0]].Origin();
+                Vector3 V1 = Edges[EdgeIndex[i + 1]].Origin();
+                Vector3 V2 = Edges[EdgeIndex[i + 2]].Origin();
+
+                Vector3 V0p = V0 + Edges[EdgeIndex[i + 0]].Dir();
+                Vector3 V1p = V1 + Edges[EdgeIndex[i + 1]].Dir();
+                Vector3 V2p = V2 + Edges[EdgeIndex[i + 2]].Dir();
+
+                Plane Face01 = Plane.FromTriangle(V0, V1, V1p);
+                Plane Face12 = Plane.FromTriangle(V1, V2, V2p);
+                Plane Face20 = Plane.FromTriangle(V2, V0, V0p);
+
+                Faces[i + 0] = Face01;
+                Faces[i + 1] = Face12;
+                Faces[i + 2] = Face20;
             }
         }
 
@@ -156,6 +375,17 @@ namespace PolygonCutter
                 {
                     Faces[i] = StashedFaces[i];
                     StashedFaces[i] = null;
+                }
+            }
+
+            for (int i = 0; i < StashedEdgeOrigin.Length; i++)
+            {
+                if(StashedEdgeOrigin[i] != null)
+                {
+                    Edges[i].x = StashedEdgeOrigin[i].x;
+                    Edges[i].y = StashedEdgeOrigin[i].y;
+                    Edges[i].z = StashedEdgeOrigin[i].z;
+                    StashedEdgeOrigin[i] = null;
                 }
             }
         }
@@ -188,29 +418,24 @@ namespace PolygonCutter
 
         private int FindEdgeCCW(int OriginalA, int OriginalB)
         {
-            for (int i = 0; i < Faces.Length; i += 3)
+            for (int i = 0; i < Faces.Length; i++)
             {
-                int IndexA = 0, IndexB = 0;
+                int TriIndex = i / 3;
 
-                if (EdgeVertOriginal[i + 0] == OriginalA)
-                    IndexA = 0;
-                else if (EdgeVertOriginal[i + 1] == OriginalA)
-                    IndexA = 1;
-                else if (EdgeVertOriginal[i + 2] == OriginalA)
-                    IndexA = 2;
+                int EdgeVert0 = i % 3;
+                int EdgeVert1 = (i % 3) + 1;
 
-                if (EdgeVertOriginal[i + 0] == OriginalB)
-                    IndexB = 0;
-                else if (EdgeVertOriginal[i + 1] == OriginalB)
-                    IndexB = 1;
-                else if (EdgeVertOriginal[i + 2] == OriginalB)
-                    IndexB = 2;
+                if (EdgeVert1 > 2)
+                    EdgeVert1 = 0;
 
-                if (IndexA == 0)
-                    IndexA = 3;
+                EdgeVert0 += TriIndex * 3;
+                EdgeVert1 += TriIndex * 3;
+
+                EdgeVert0 = EdgeVertOriginal[EdgeVert0];
+                EdgeVert1 = EdgeVertOriginal[EdgeVert1];
 
                 // Looking for CCw, so A must be B + 1
-                if (IndexA == IndexB + 1)
+                if (EdgeVert1 == OriginalA && EdgeVert0 == OriginalB)
                     return i;
             }
 
@@ -237,7 +462,7 @@ namespace PolygonCutter
                     if (EDist.HasValue && EDist > 0f && EDist.Value < EdgeLen)
                     {
                         Vector3 vInt = TriEdge.IntersectPlane(p);
-                        if (TestVertex(vInt, i))
+                        if (TestVertex(vInt, i) || TestValidFaceCut(vInt, i))
                             return true;
                     }
                 }
@@ -249,7 +474,7 @@ namespace PolygonCutter
                     if (EDist.HasValue && EDist > 0f && EDist.Value < EdgeLen)
                     {
                         Vector3 vInt = TriEdge.IntersectPlane(p);
-                        if (TestVertex(vInt, i))
+                        if (TestVertex(vInt, i) || TestValidFaceCut(vInt, i))
                             return true;
                     }
                 }
@@ -261,7 +486,7 @@ namespace PolygonCutter
                     if (EDist.HasValue && EDist > 0f && EDist.Value < EdgeLen)
                     {
                         Vector3 vInt = TriEdge.IntersectPlane(p);
-                        if (TestVertex(vInt, i))
+                        if (TestVertex(vInt, i) || TestValidFaceCut(vInt, i))
                             return true;
                     }
                 }
@@ -273,12 +498,64 @@ namespace PolygonCutter
         /// <summary>
         /// A pair of edges which are the last clip face we clipped against. Stored to prevent repeated clipping at 1e-8 distances due to rounding errors.
         /// </summary>
-        public int [] PreviousFoundEdge = { -1, -1 };
+        public int [] PreviousFoundEdge = { -1, -1, -1, -1, -1 };
 
         public void ResetPreviousClipEdges()
         {
             PreviousFoundEdge[0] = -1;
             PreviousFoundEdge[1] = -1;
+            PreviousFoundEdge[2] = -1;
+            PreviousFoundEdge[3] = -1;
+            PreviousFoundEdge[4] = -1;
+        }
+
+        public void ResetFaceCuts()
+        {
+            for (int i = 0; i < FaceCuts.Length; i++)
+                FaceCuts[i] = 0;
+        }
+
+        private void FindTooNearCutPlanes(Vector3 EdgeStart, Vector3 EdgeEnd, Plane pNormal)
+        {
+            List<int> tooNear = new List<int>();
+
+            float Threshold = 0.001f;
+            if ((EdgeStart - EdgeEnd).Len() > 40f)
+                Threshold = 0.00001f;   // Hack for ISD
+
+            for(int i = 0; i < Faces.Length; i++)
+            {
+                if (FaceInternal[i])
+                    continue;
+
+                float fStart = Math.Abs(Faces[i].PointValue(EdgeStart));
+                float fEnd = Math.Abs(Faces[i].PointValue(EdgeEnd));
+
+                if (fStart < Threshold)
+                    tooNear.Add(i);
+
+                if (fEnd < Threshold)
+                    tooNear.Add(i);
+            }
+
+            for (int i = 0; i < Math.Min(tooNear.Count, 4); i++)
+                PreviousFoundEdge[i] = tooNear[i];
+        }
+
+        public bool VertexOnCutFace(Vector3 vTest, Plane pNormal)
+        {
+            for (int i = 0; i < Faces.Length; i++)
+            {
+                if (FaceInternal[i])
+                    continue;
+
+                float fStart = Math.Abs(Faces[i].PointValue(vTest));
+
+                if (fStart < 0.00001f && TestValidFaceCut(vTest, i))    // Needs to be close to the face and also within the limits for the face
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -287,11 +564,39 @@ namespace PolygonCutter
         /// <param name="TriEdge"></param>
         /// <param name="EdgeLen"></param>
         /// <returns></returns>
-        public Vector3 FirstEdgeAgainstCutter(Vector3Line TriEdge, float EdgeLen)
+        public Vector3 FirstEdgeAgainstCutter(Vector3 EdgeStart, Vector3 EdgeEnd, Plane pNormal, out int FaceIndex)
         {
+            FindTooNearCutPlanes(EdgeStart, EdgeEnd, pNormal);
+
+            /*int iStartEdge = FindNearEdge(EdgeStart, pNormal);
+
+            int iPrevEdge = FindPreviousEdge(iStartEdge);
+            int iNextEdge = FindNextEdge(iStartEdge);
+
+            if (iStartEdge != -1)
+            {
+                PreviousFoundEdge[0] = iStartEdge;
+                PreviousFoundEdge[1] = iPrevEdge;
+            }
+
+            iStartEdge = FindNearEdge(EdgeEnd, pNormal);
+
+            iPrevEdge = FindPreviousEdge(iStartEdge);
+            iNextEdge = FindNextEdge(iStartEdge);
+
+            if (iStartEdge != -1)
+            {
+                PreviousFoundEdge[2] = iStartEdge;
+                PreviousFoundEdge[3] = iPrevEdge;
+            }*/
+
+            Vector3Line TriEdge = new Vector3Line(EdgeStart, EdgeEnd);
+            float EdgeLen = TriEdge.Dir().Len();
+
             // Go through all our cutter planes and see if any of them cut it properly
             float BestDistance = EdgeLen;
             Vector3 Result = null;
+
             int EdgeID = -1;
 
             for (int i = 0; i < Faces.Length / 3; i++)
@@ -301,10 +606,10 @@ namespace PolygonCutter
                 {
                     Plane p = Faces[index];
                     float? EDist = TriEdge.IntersectPlaneDistance(p);
-                    if (EDist.HasValue && EDist > 0f && EDist.Value < BestDistance)
+                    if (EDist.HasValue && EDist >= 0f && EDist.Value <= BestDistance)
                     {
                         Vector3 vInt = TriEdge.IntersectPlane(p);
-                        if (TestVertex(vInt, i))
+                        if (TestValidFaceCut(vInt, index))
                         {
                             BestDistance = EDist.Value;
                             Result = vInt;
@@ -318,10 +623,10 @@ namespace PolygonCutter
                 {
                     Plane p = Faces[index];
                     float? EDist = TriEdge.IntersectPlaneDistance(p);
-                    if (EDist.HasValue && EDist > 0f && EDist.Value < BestDistance)
+                    if (EDist.HasValue && EDist >= 0f && EDist.Value <= BestDistance)
                     {
                         Vector3 vInt = TriEdge.IntersectPlane(p);
-                        if (TestVertex(vInt, i))
+                        if (TestValidFaceCut(vInt, index))
                         {
                             BestDistance = EDist.Value;
                             Result = vInt;
@@ -335,10 +640,10 @@ namespace PolygonCutter
                 {
                     Plane p = Faces[index];
                     float? EDist = TriEdge.IntersectPlaneDistance(p);
-                    if (EDist.HasValue && EDist > 0f && EDist.Value < BestDistance)
+                    if (EDist.HasValue && EDist >= 0f && EDist.Value <= BestDistance)
                     {
                         Vector3 vInt = TriEdge.IntersectPlane(p);
-                        if (TestVertex(vInt, i))
+                        if (TestValidFaceCut(vInt, index))
                         {
                             BestDistance = EDist.Value;
                             Result = vInt;
@@ -348,78 +653,16 @@ namespace PolygonCutter
                 }
             }
 
-            PreviousFoundEdge[0] = EdgeID;
-            if (EdgeID != -1)
-                PreviousFoundEdge[1] = FaceOpposite[EdgeID];
+            ResetPreviousClipEdges();
+            PreviousFoundEdge[4] = EdgeID;
+
+            FaceIndex = EdgeID;
 
             return Result;
-        }
+        }        
 
         /// <summary>
-        /// Returns the first cut
-        /// </summary>
-        /// <param name="TriEdge"></param>
-        /// <param name="EdgeLen"></param>
-        /// <returns></returns>
-        public Vector3 LastEdgeAgainstCutter(Vector3Line TriEdge, float EdgeLen)
-        {
-            // Go through all our cutter planes and see if any of them cut it properly
-            float BestDistance = 0f;
-            Vector3 Result = null;
-
-            for (int i = 0; i < Faces.Length / 3; i++)
-            {
-                if (!FaceInternal[i * 3 + 0])
-                {
-                    Plane p = Faces[i * 3 + 0];
-                    float? EDist = TriEdge.IntersectPlaneDistance(p);
-                    if (EDist.HasValue && EDist > BestDistance && EDist.Value < EdgeLen)
-                    {
-                        Vector3 vInt = TriEdge.IntersectPlane(p);
-                        if (TestVertex(vInt, i))
-                        {
-                            BestDistance = EDist.Value;
-                            Result = vInt;
-                        }
-                    }
-                }
-
-                if (!FaceInternal[i * 3 + 1])
-                {
-                    Plane p = Faces[i * 3 + 1];
-                    float? EDist = TriEdge.IntersectPlaneDistance(p);
-                    if (EDist.HasValue && EDist > BestDistance && EDist.Value < EdgeLen)
-                    {
-                        Vector3 vInt = TriEdge.IntersectPlane(p);
-                        if (TestVertex(vInt, i))
-                        {
-                            BestDistance = EDist.Value;
-                            Result = vInt;
-                        }
-                    }
-                }
-
-                if (!FaceInternal[i * 3 + 2])
-                {
-                    Plane p = Faces[i * 3 + 2];
-                    float? EDist = TriEdge.IntersectPlaneDistance(p);
-                    if (EDist.HasValue && EDist > BestDistance && EDist.Value < EdgeLen)
-                    {
-                        Vector3 vInt = TriEdge.IntersectPlane(p);
-                        if (TestVertex(vInt, i))
-                        {
-                            BestDistance = EDist.Value;
-                            Result = vInt;
-                        }
-                    }
-                }
-            }
-
-            return Result;
-        }
-
-        /// <summary>
-        /// Tests whether a point is within any of out cutter triangles
+        /// Tests whether a point is within any of our cutter triangles
         /// </summary>
         /// <param name="vTest"></param>
         /// <returns></returns>
@@ -428,7 +671,7 @@ namespace PolygonCutter
             // Check all of our cut prism
             for (int i = 0; i < Faces.Length / 3; i++)
             {
-                if (TestVertex(vTest, i))
+                if (TestVertexByFace(vTest, i))
                     return true;
             }
 
@@ -436,17 +679,140 @@ namespace PolygonCutter
         }
 
         /// <summary>
-        /// Tests whether a point is within 1 of out cutter triangles, or not
+        /// Gets the  true edge line for an edge with a stashed face (or a non-stashed face)
+        /// </summary>
+        /// <param name="Edge"></param>
+        /// <returns></returns>
+        public Vector3Line GetStashedEdgeLine(int Edge)
+        {
+            Edge = EdgeIndex[Edge];
+            int FaceCurrent = FindFaceStartingHere(Edge);
+            int FacePrevious = FindNextFace(FaceCurrent);
+
+            int EdgePrev = FindPreviousEdge(Edge);
+            int EdgeNext = FindNextEdge(Edge);
+
+            EdgePrev = EdgeIndex[EdgePrev];
+            EdgeNext = EdgeIndex[EdgeNext];
+
+            // Get the planes for these faces
+            Plane planeCurrent = Faces[FaceCurrent];
+            Plane planePrevious = Faces[FacePrevious];
+
+            Vector3Line v3Line = new Vector3Line( Edges[Edge]);
+            Vector3 origin = Edges[Edge].Origin();
+
+            // 
+            Vector3Line v3PrevLine = new Vector3Line(Edges[EdgePrev].Origin(), Edges[Edge].Origin());
+            Vector3Line v3CurrentLine = new Vector3Line(Edges[EdgeNext].Origin(), Edges[Edge].Origin());
+
+            // Project the previous line into the current face to get an adjustment
+            Vector3 adjPrev = v3PrevLine.IntersectPlane(planeCurrent) - origin;
+
+            // Project the current line backwards into the previous face to get an adjustment
+            Vector3 adjCurrent = v3CurrentLine.IntersectPlane(planePrevious) - origin;
+
+            origin += adjPrev;
+            origin += adjCurrent;
+
+            v3Line.x = origin.x;
+            v3Line.y = origin.y;
+            v3Line.z = origin.z;
+
+            // some debug logic to check that we are still sat on the same plane
+            float fP = planePrevious.PointValue(origin);
+            float fC = planeCurrent.PointValue(origin);
+
+
+            return v3Line;
+        }
+
+        /// <summary>
+        /// Tests whether a point is within 1 of out cutter triangles, or not, using the prism edges
         /// </summary>
         /// <param name="vTest"></param>
         /// <returns></returns>
         public bool TestVertex(Vector3 vTest, int FaceIndex)
+        {
+            float u, v, w;
+            Cutter.Barycentric(vTest, Edges[EdgeIndex[FaceIndex * 3]].Origin(), Edges[EdgeIndex[FaceIndex * 3 + 1]].Origin(), Edges[EdgeIndex[FaceIndex * 3 + 2]].Origin(), out u, out v, out w);
+
+            if (u < -0.001f || u > 1.001f)
+                return false;
+
+            if (v < -0.001f || v > 1.001f)
+                return false;
+
+            if (w < -0.001f || w > 1.001f)
+                return false;
+
+            return true;
+            /*
+            // Allow a very small amount of deviation to cope with rounding errors
+            if (Faces[FaceIndex * 3 + 0].PointValue(vTest) < 0.0001f && Faces[FaceIndex * 3 + 1].PointValue(vTest) < 0.0001f && Faces[FaceIndex * 3 + 2].PointValue(vTest) < 0.0001f)
+                return true;
+
+            return false;*/
+        }
+
+        /// <summary>
+        /// Tests whether a point is within 1 of out cutter triangles, or not, using the prism faces
+        /// </summary>
+        /// <param name="vTest"></param>
+        /// <returns></returns>
+        public bool TestVertexByFace(Vector3 vTest, int FaceIndex)
         {
             // Allow a very small amount of deviation to cope with rounding errors
             if (Faces[FaceIndex * 3 + 0].PointValue(vTest) < 0.0001f && Faces[FaceIndex * 3 + 1].PointValue(vTest) < 0.0001f && Faces[FaceIndex * 3 + 2].PointValue(vTest) < 0.0001f)
                 return true;
 
             return false;
+        }
+
+        private bool TestValidFaceCut(Vector3 vTest, int Face)
+        {
+            int TriIndex = Face / 3;
+
+            int NextFace = (Face % 3) + 1;
+            int PrevFace = (Face % 3) - 1;
+
+            if (NextFace > 2)
+                NextFace = 0;
+            if (PrevFace < 0)
+                PrevFace = 2;
+
+            NextFace += TriIndex * 3;
+            PrevFace += TriIndex * 3;
+
+            if (Faces[NextFace].PointValue(vTest) < 0.0001f && Faces[PrevFace].PointValue(vTest) < 0.0001f)
+                return true;
+
+            return false;
+            /*
+            int EdgeStart = Face % 3;
+            int EdgeEnd = EdgeStart + 1;
+
+            if (EdgeEnd > 2)
+                EdgeEnd = 0;
+
+            EdgeStart += TriIndex * 3;
+            EdgeEnd += TriIndex * 3;
+
+            EdgeStart = EdgeIndex[EdgeStart];   // Get the vector array index
+            EdgeEnd = EdgeIndex[EdgeEnd];   // Get the vector array index
+
+            Vector3 vStart = Edges[EdgeStart].Origin();
+            Vector3 vEnd = Edges[EdgeEnd].Origin();
+
+            Plane pStartCap = Plane.FromOriginAndNormal(vStart, vEnd - vStart);
+            Plane pEndCap = Plane.FromOriginAndNormal(vEnd, vStart - vEnd);
+
+            float StartVal = pStartCap.PointValue(vTest);
+            float EndVal = pEndCap.PointValue(vTest);
+
+            if (StartVal >= -0.001f && EndVal >= -0.001f)   // We have 1mm tolerance at either end
+                return true;
+            return false;*/
         }
 
         public bool EdgesWithinTriangle(Vector3 V0, Vector3 V1, Vector3 V2)
@@ -504,6 +870,57 @@ namespace PolygonCutter
             return true;
         }
 
+        public bool AllPrismsWithinTriangle(Vector3 V0, Vector3 V1, Vector3 V2)
+        {
+            Plane pTri = Plane.FromTriangle(V0, V1, V2);
+
+            // Check to see if all the cookie cutter prism centres are within the triangle.
+            for (int i = 0; i < EdgeIndex.Length; i += 3)
+            {
+                Vector3 vHit = (Edges[EdgeIndex[i]].IntersectPlane(pTri) + Edges[EdgeIndex[i+1]].IntersectPlane(pTri) + Edges[EdgeIndex[i+2]].IntersectPlane(pTri)) / 3f;
+
+                if (vHit != null)
+                {
+                    float u, v, w;
+                    Cutter.Barycentric(vHit, V0, V1, V2, out u, out v, out w);
+
+                    // Check to see if this hit location resides within our parent triangle. If it doesn't not all edges are within triangle
+                    if (u < 0f || u > 1f)
+                        return false;
+                    if (v < 0f || v > 1f)
+                        return false;
+                    if (w < 0f || w > 1f)
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        public bool PrismEdgeWithinTriangle(int Edge, Vector3 V0, Vector3 V1, Vector3 V2)
+        {
+            Plane pTri = Plane.FromTriangle(V0, V1, V2);
+
+            // Check to see if all the cookie cutter prism centres are within the triangle.
+            Vector3 vHit = Edges[EdgeIndex[Edge]].IntersectPlane(pTri);
+
+            if (vHit != null)
+            {
+                float u, v, w;
+                Cutter.Barycentric(vHit, V0, V1, V2, out u, out v, out w);
+
+                // Check to see if this hit location resides within our parent triangle. If it doesn't not all edges are within triangle
+                if (u < 0f || u > 1f)
+                    return false;
+                if (v < 0f || v > 1f)
+                    return false;
+                if (w < 0f || w > 1f)
+                    return false;
+            }
+
+            return true;
+        }
+
         private int FindClippingFace(Vector3 vHit)
         {
             // This point has been generated by clipping a line through our clip faces.
@@ -527,7 +944,13 @@ namespace PolygonCutter
             return BestIndex;
         }
 
-        private int FindNearEdge(Vector3 vHit, Plane pNormal)
+        /// <summary>
+        /// Returns the Edge number on which this point sits, or -1 if it does not sit on a cut prism edge.
+        /// </summary>
+        /// <param name="vHit"></param>
+        /// <param name="pNormal"></param>
+        /// <returns></returns>
+        public int FindNearEdge(Vector3 vHit, Plane pNormal)
         {
             // Each prism edge will intersect with a pNormal at a point.
             // If the point is really close to our vHit point, then we start at this edge
@@ -543,7 +966,7 @@ namespace PolygonCutter
                     pHit = pHit - vHit;
                     float D = pHit.Len();
 
-                    if (D < 0.0001f && D < fBestDistance)
+                    if (D < 0.001f && D < fBestDistance)    // Within 1mm
                     {
                         fBestDistance = D;
                         BestIndex = i;
@@ -554,7 +977,7 @@ namespace PolygonCutter
             return BestIndex;
         }
 
-        private int FindPreviousEdge(int Edge)
+        public int FindPreviousEdge(int Edge)
         {
             // We are looking for a triangle external face
             for (int i = 0; i < EdgeIndex.Length; i++)
@@ -568,9 +991,117 @@ namespace PolygonCutter
                 iEdgeCurrent += iFaceNumber * 3;
                 iEdgePrev += iFaceNumber * 3;
 
-                iEdgeCurrent = EdgeIndex[iEdgeCurrent];
-                if (iEdgeCurrent == Edge && !FaceInternal[iEdgePrev])
+                if (EdgeIndex[iEdgeCurrent] == Edge && !FaceInternal[iEdgePrev])
                     return iEdgePrev;
+            }
+
+            return -1;
+        }
+
+        public int FindNextEdge(int Edge)
+        {
+            // We are looking for a triangle external face
+            for (int i = 0; i < EdgeIndex.Length; i++)
+            {
+                int iFaceNumber = i / 3;
+                int iEdgeCurrent = (i % 3);
+                int iEdgeNext = (i % 3) + 1;
+                if (iEdgeNext > 2)
+                    iEdgeNext = 0;
+
+                iEdgeCurrent += iFaceNumber * 3;
+                iEdgeNext += iFaceNumber * 3;
+
+                if (EdgeIndex[iEdgeCurrent] == Edge && !FaceInternal[iEdgeCurrent])
+                    return iEdgeNext;
+            }
+
+            return -1;
+        }
+
+        /// <summary>
+        /// Finds the next face in a Clockwise direction from the face provided
+        /// </summary>
+        /// <param name="Face"></param>
+        /// <returns></returns>
+        public int FindNextFace(int Face)
+        {
+            int FaceEdge0 = Face;
+
+            FaceEdge0 = EdgeIndex[FaceEdge0];
+
+            for (int i = 0; i < EdgeIndex.Length; i++)
+            {
+                if (FaceInternal[i])
+                    continue;   // We don't want to find internal faces
+
+                int iTriNumber = i / 3;
+                int iEdgeNext = (i % 3) + 1;
+                if (iEdgeNext > 2)
+                    iEdgeNext = 0;
+
+                iEdgeNext += iTriNumber * 3;
+
+                iEdgeNext = EdgeIndex[iEdgeNext];
+
+                if (iEdgeNext == FaceEdge0)
+                    return i;
+            }
+            
+            return -1;
+        }
+        
+        /// <summary>
+        /// Finds the next face in an Anti Clockwise direction from the face provided
+        /// </summary>
+        /// <param name="Face"></param>
+        /// <returns></returns>
+        public int FindPreviousFace(int Face)
+        {
+            int FaceEdge0 = Face;
+            int FaceEdge1 = (Face % 3) + 1;
+            if (FaceEdge1 > 2)
+                FaceEdge1 = 0;
+
+            FaceEdge1 += (Face / 3) * 3;
+
+            FaceEdge1 = EdgeIndex[FaceEdge1];
+
+            for (int i = 0; i < EdgeIndex.Length; i++)
+            {
+                if (FaceInternal[i])
+                    continue;   // We don't want to find internal faces
+
+                int iTriNumber = i / 3;
+                int iEdgeCurrent = (i % 3);
+
+                iEdgeCurrent += iTriNumber * 3;
+
+                iEdgeCurrent = EdgeIndex[iEdgeCurrent];
+
+                if (iEdgeCurrent == FaceEdge1)
+                    return i;
+            }
+
+            return -1;
+        }
+
+        public int FindFaceStartingHere(int Edge)
+        {
+            for(int i = 0; i < Edges.Length; i++)
+            {
+                if (FaceInternal[i])
+                    continue;
+
+                int iTriNumber = i / 3;
+                int iEdgeCurrent = (i % 3);
+
+                iEdgeCurrent += iTriNumber * 3;
+
+                iEdgeCurrent = EdgeIndex[iEdgeCurrent];
+
+                if (iEdgeCurrent == Edge)
+                    return i;
             }
 
             return -1;
@@ -588,11 +1119,47 @@ namespace PolygonCutter
 
                 int iFaceNumber = iClipFace / 3;
                 int iEdgePrev = iClipFace % 3;  // Face 0 has verts 0->1, Face 1 has verts 1->2 etc., so this is the previous prism edge
+
+                if (iFaceNumber * 3 + iEdgePrev < 0)
+                {
+                    UnityEngine.Debug.LogError("Invalid Clipping Face");
+                }
+
                 return Edges[EdgeIndex[iFaceNumber * 3 + iEdgePrev]].IntersectPlane(pNormal);
             } else
             {
                 // We have found an edge. Find a triangle which has an external face with this as it's destination
                 int iEdge = FindPreviousEdge(iStartEdge);
+                if (iEdge == -1 || EdgeIndex[iEdge] == -1)
+                {
+                    UnityEngine.Debug.LogError("Invalid Clipping Edge");
+                }
+
+                return Edges[EdgeIndex[iEdge]].IntersectPlane(pNormal);
+            }
+        }
+
+        public Vector3 PreviousSegment(Vector3 vStart, Plane pNormal)
+        {
+            // Check that we haven't started on an edge
+            int iStartEdge = FindNearEdge(vStart, pNormal);
+
+            if (iStartEdge == -1)
+            {
+                // We have hit a regular prism face, find the face
+                int iClipFace = FindClippingFace(vStart);
+
+                int iFaceNumber = iClipFace / 3;
+                int iEdgeNext = (iClipFace % 3) + 1;  // Face 0 has verts 0->1, Face 1 has verts 1->2 etc., so this is the next prism edge
+                if (iEdgeNext > 2)
+                    iEdgeNext = 0;
+
+                return Edges[EdgeIndex[iFaceNumber * 3 + iEdgeNext]].IntersectPlane(pNormal);
+            }
+            else
+            {
+                // We have found an edge. Find a triangle which has an external face with this as it's destination
+                int iEdge = FindNextEdge(iStartEdge);
                 return Edges[EdgeIndex[iEdge]].IntersectPlane(pNormal);
             }
         }
@@ -615,73 +1182,78 @@ namespace PolygonCutter
             return vClosest.Len();
         }
 
+        private int NextPointInLine(Vector3Line v3Line, ref float MinD, List<PositionAndNormal> v3MeshData, float Threshold = 0.001f)
+        {
+            float BestT = 10f;
+            int BestResult = -1;
+            for (int i = 0 ; i < v3MeshData.Count ; i++)
+            {
+                var vCandidate = v3MeshData[i];
+                float t = Vector3.Dot(v3Line.Dir(), (vCandidate.Pos - v3Line.Origin())) / Vector3.Dot(v3Line.Dir(), v3Line.Dir());
+
+                if (t >= -0.001f && t < 1.001f && t < BestT && t > MinD)
+                {
+                    Vector3 Rejoin = v3Line.Origin() + v3Line.Dir() * t;
+                    float Distance = (Rejoin - vCandidate.Pos).Len();
+
+                    if (Distance < Threshold)
+                    {
+                        BestT = t;
+                        BestResult = i;
+                    }
+                }
+            }
+            
+            MinD = BestT;
+            return BestResult;
+        }
+
         public List<int> MarkVerts(List<PositionAndNormal> v3MeshData)
         {
             List<int> HullPoints = new List<int>();
 
-            for(int i = 0; i < Faces.Length; i++)
+            // Find a point to start
+            Vector3 vstart = null;
+
+            for (int i = 0; i < Faces.Length; i++)
             {
-                Plane Face = Faces[i];
-                if (FaceInternal[i])
-                    continue;   // Ignore internal cut faces
-
-                List<Tuple<int, float>> FaceVerts = new List<Tuple<int, float>>();
-
-                int iFaceNumber = i / 3;
-                int iEdgePrev = i % 3;
-                int iEdgeNext = (i % 3) + 1;
-                if (iEdgeNext > 2)
-                    iEdgeNext = 0;
-
-                int iFacePrev = (i % 3) - 1;
-                int iFaceNext = (i % 3) + 1;
-
-                if (iFacePrev < 0)
-                    iFacePrev = 2;
-                if (iFaceNext > 2)
-                    iFaceNext = 0;
-
-                iEdgeNext += iFaceNumber * 3;
-                iEdgePrev += iFaceNumber * 3;
-                iFaceNext += iFaceNumber * 3;
-                iFacePrev += iFaceNumber * 3;
-
-                float EDistMax = Faces[iFacePrev].PointValue(Edges[EdgeIndex[iEdgeNext]].Origin());
-
-                for (int j = 0; j < v3MeshData.Count; j++)
+                if (!FaceInternal[i])
                 {
-                    PositionAndNormal pos = v3MeshData[j];
-
-                    float Proximity = Face.PointValue(pos.Pos);
-                    
-                    if (Math.Abs(Proximity) < 0.001f)
-                    {
-                        // This Vector3 is on this plane
-                        float EDistP = EdgeDistanceToPoint(Edges[EdgeIndex[iEdgePrev]], pos.Pos);
-                        float EDistN = EdgeDistanceToPoint(Edges[EdgeIndex[iEdgeNext]], pos.Pos);
-                        if (EDistP < 0.001f)
-                        {
-                            FaceVerts.Add(new Tuple<int, float>(j, 0f));
-                        } else if (EDistN < 0.001f)
-                        {
-                            FaceVerts.Add(new Tuple<int, float>(j, 1f));
-                        } else
-                        {
-                            // Verify that the point isn't outside of the triangle, and if it isn't then order by -ve Point Value
-
-                            if (Faces[iFacePrev].PointValue(pos.Pos) < 0f && Faces[iFaceNext].PointValue(pos.Pos) < 0f)
-                            {
-                                // Super, add the point
-                                FaceVerts.Add(new Tuple<int, float>(j, Faces[iFacePrev].PointValue(pos.Pos) / EDistMax));
-                            }
-                        }
-                    }
+                    vstart = Edges[EdgeIndex[i]].Origin();
+                    break;
                 }
+            }
 
-                var Ordered = FaceVerts.OrderBy(x => x.Item2);  // Get the list of points which lie on this plane in the clockwise order
+            Plane pNormal = new Plane(Edges[EdgeIndex[0]].Origin(), Edges[EdgeIndex[1]].Origin(), Edges[EdgeIndex[2]].Origin());
 
-                foreach (var v in Ordered)
-                    HullPoints.Add(v.Item1);
+            // Get the list of external edges
+            List<Vector3> lstEdges = new List<Vector3>();
+            while (lstEdges.FindIndex(x => (x - vstart).Len() < 0.001f) == -1)
+            {
+                lstEdges.Add(vstart);
+
+                vstart = NextSegment(vstart, pNormal);
+            } 
+
+            lstEdges.Reverse();
+
+            for (int i = 0; i < lstEdges.Count ; i++)
+            {
+                int iNextVert = i + 1;
+
+                if (iNextVert >= lstEdges.Count)
+                    iNextVert = 0;
+
+                Vector3Line v3Line = new Vector3Line(lstEdges[i], lstEdges[iNextVert]);
+
+                float D = -1f;
+                int iFound = NextPointInLine(v3Line, ref D, v3MeshData, 0.025f);
+
+                while(iFound != -1)
+                {
+                    HullPoints.Add(iFound);
+                    iFound = NextPointInLine(v3Line, ref D, v3MeshData, 0.025f);
+                }
             }
 
             // We now have a list of hull points. Go through them creating edges

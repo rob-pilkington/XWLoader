@@ -65,6 +65,19 @@ namespace PolygonCutter
             return a.x == b.x && a.y == b.y && a.z == b.z;
         }
 
+        public override bool Equals(object obj)
+        {
+            if (obj is Vector3)
+                return this == (Vector3)obj;
+            else
+                return base.Equals(obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return (x.GetHashCode() * 3867) ^ (y.GetHashCode() * 47329) ^ (z.GetHashCode() * 2189975);
+        }
+
         public static bool operator !=(Vector3 a, Vector3 b)
         {
             if ((object)a == null || (object)b == null)

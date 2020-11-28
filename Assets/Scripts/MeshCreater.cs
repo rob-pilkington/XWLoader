@@ -109,12 +109,20 @@ namespace Assets.Scripts
                     // Polygon
                     var vertexIndices = polygon.VertexIndices.Reverse().ToArray();
 
+                    if (Vector3.Dot(Vector3.Cross(originalVertices[vertexIndices[1]] - originalVertices[vertexIndices[0]], originalVertices[vertexIndices[2]] - originalVertices[vertexIndices[0]]), normal) < 0f)
+                        normal = -normal;   // The normal for this section is flipsy turvey
+
                     var triangleIndices = GetTriangleIndices(polygon.Vertices);
 
-                    CopyVertices(originalVertices, sectionNormals, colorInfo.IsFlatShaded ? false : polygon.ShadeFlag, vertexIndices, triangleIndices, colorInfo, normal, vertices, triangles, normals, uv);
+                    List<PolygonCutter.Triangle> baseTris = PolygonCutter.Triangle.BuildTriangleList(triangleIndices, vertexIndices, originalVertices, sectionNormals);
+                    var baseMeshPoints = PolygonCutter.PositionAndNormal.BuildPositionAndNormalList(originalVertices, sectionNormals, normal);
+
+                    PolygonCutter.Cutter.SanitizeNormals(baseTris, baseMeshPoints);
+
+                    List<PolygonCutter.MarkingDetail> markDetails = new List<PolygonCutter.MarkingDetail>();
 
                     if (enableMarkings)
-                        SetMarkingsOnMesh(
+                        markDetails = GetMarkingsOnMesh(
                             lodRecord.MarkRecords.Where(x => x.Key == i).SelectMany(x => x.Value),
                             flightGroupColor,
                             originalVertices.ToArray(),
@@ -126,8 +134,117 @@ namespace Assets.Scripts
                             normal,
                             polygon);
 
+                    if (markDetails.Count > 0)
+                    {
+                        int DebugIndex = -1;
+                        List<PolygonCutter.Triangle> newBaseTris = new List<PolygonCutter.Triangle>();
+                        List<PolygonCutter.Triangle> markingTris = new List<PolygonCutter.Triangle>(baseTris);  // Used for creating the marking cut
+                        List<PolygonCutter.Triangle> selfCutMarkingTris = null;   // Used for cutting higher priorty markings into lower priority ones
+
+                        for (int j = 0; j < markDetails.Count; j++)
+                        {
+                            var markDetail = markDetails[j];
+                            PolygonCutter.CookieCutter cc = PolygonCutter.CookieCutter.MakeCC(markDetail.TriangleList, new PolygonCutter.Vector3(normal.x, normal.y, normal.z));
+                            
+                            foreach (PolygonCutter.Triangle t in baseTris)
+                            {
+                                if ((j <= DebugIndex || DebugIndex == -1) && PolygonCutter.Cutter.ChopPolygonCheck(baseMeshPoints, t, cc))
+                                {
+                                    newBaseTris.AddRange(PolygonCutter.Cutter.ChopPolygon(t, cc, baseMeshPoints));  // Replace the old triangle with whatever we spit out
+                                }
+                                else
+                                {
+                                    newBaseTris.Add(t); // No cuts on this face, add the output
+                                }
+                            }
+
+                            // Clear out the list of triangles as we want to replace it and generate a new list
+                            baseTris.Clear();
+                            baseTris.AddRange(newBaseTris);
+                            newBaseTris.Clear();
+                        }
+
+                        // Carving leaves a lot of extra verts which could be killed, clean up the new triangles
+                        int CulledVerts = PolygonCutter.Cutter.RemoveUselessPoints(baseTris, baseMeshPoints, 0.99999999f);  // 0.08 degrees
+                        
+                        
+                        // Now get the marking triangles
+                        for (int j = 0; j < markDetails.Count ; j++)
+                        {
+                            var markDetail = markDetails[j];
+                            PolygonCutter.CookieCutter cc = PolygonCutter.CookieCutter.MakeCC(markDetail.TriangleList, new PolygonCutter.Vector3(normal.x, normal.y, normal.z));
+
+                            // Use newBaseTris for the marking tris
+                            newBaseTris.Clear();
+
+                            foreach (PolygonCutter.Triangle t in markingTris)
+                            {
+                                if ((j <= DebugIndex || DebugIndex == -1) && PolygonCutter.Cutter.ChopPolygonCheck(baseMeshPoints, t, cc))
+                                {
+                                    // Get the inner cutter triangles
+                                    newBaseTris.AddRange(PolygonCutter.Cutter.ChopPolygon(t, cc, baseMeshPoints, true));
+                                } // If we don't cut this triangle at all exclude it from the output
+                            }
+
+                            // Carve up newBaseTris with higher priority marks to get final mark set
+                            for (int k = j + 1; k < markDetails.Count; k++)
+                            {
+                                selfCutMarkingTris = new List<PolygonCutter.Triangle>();
+                                bool CutsMade = false;
+
+                                // Generate the new cookie cutter
+                                cc = PolygonCutter.CookieCutter.MakeCC(markDetails[k].TriangleList, new PolygonCutter.Vector3(normal.x, normal.y, normal.z));
+
+                                foreach (PolygonCutter.Triangle t2 in newBaseTris)
+                                {
+                                    if ((k <= DebugIndex || DebugIndex == -1) && PolygonCutter.Cutter.ChopPolygonCheck(baseMeshPoints, t2, cc))
+                                    {
+                                        // Remove high priority meshes
+                                        selfCutMarkingTris.AddRange(PolygonCutter.Cutter.ChopPolygon(t2, cc, baseMeshPoints));
+                                        CutsMade = true;
+                                    } else
+                                    {
+                                        selfCutMarkingTris.Add(t2);
+                                    }
+                                }
+
+                                if (CutsMade)
+                                {
+                                    newBaseTris.Clear();
+                                    newBaseTris.AddRange(selfCutMarkingTris);
+                                    selfCutMarkingTris.Clear();
+                                }
+                            }
+
+                            // Clear up the extra unnecessary verts
+                            CulledVerts += PolygonCutter.Cutter.RemoveUselessPoints(newBaseTris, baseMeshPoints, 0.99999999f);
+
+                            // Now store
+                            markDetail.DrawTriangles.AddRange(newBaseTris);
+                        }//*/
+
+                        if (PolygonCutter.Cutter.ReportMessages && CulledVerts > 0)
+                            UnityEngine.Debug.Log($"Removed {CulledVerts} carving verts");
+                    }
+
+                    
+
+                    PolygonCutter.Triangle.ReverseTriangleList(baseTris, baseMeshPoints, originalVertices, out sectionNormals, out triangleIndices, out vertexIndices);
+
+                    CopyVertices(originalVertices, sectionNormals, colorInfo.IsFlatShaded ? false : polygon.ShadeFlag, vertexIndices, triangleIndices, colorInfo, normal, vertices, triangles, normals, uv);
+
                     if (triangleIndices.Length > 0 && polygon.TwoSidedFlag)
                         CopyVertices(originalVertices, sectionNormals, colorInfo.IsFlatShaded ? false : polygon.ShadeFlag, vertexIndices, triangleIndices.Reverse().ToArray(), colorInfo, -normal, vertices, triangles, normals, uv);
+
+                    foreach (var markDetail in markDetails)
+                    {
+                        PolygonCutter.Triangle.ReverseTriangleList(markDetail.DrawTriangles, baseMeshPoints, originalVertices, out sectionNormals, out triangleIndices, out vertexIndices);
+
+                        CopyVertices(originalVertices, sectionNormals, markDetail.Colour.IsFlatShaded ? false : markDetail.ShadeFlag, vertexIndices, triangleIndices, markDetail.Colour, normal, vertices, triangles, normals, uv);
+
+                        if (triangleIndices.Length > 0 && markDetail.TwoSidedFlag)
+                            CopyVertices(originalVertices, sectionNormals, markDetail.Colour.IsFlatShaded ? false : markDetail.ShadeFlag, vertexIndices, triangleIndices.Reverse().ToArray(), markDetail.Colour, -normal, vertices, triangles, normals, uv);
+                    }
                 }
             }
 
@@ -153,6 +270,217 @@ namespace Assets.Scripts
 
             mesh.uv = uv.ToArray();
             markingMesh.uv = uv.ToArray();
+        }
+        
+        private List<PolygonCutter.MarkingDetail> GetMarkingsOnMesh(IEnumerable<MarkRecord> markRecords, int? flightGroupColor, Vector3[] originalVertices, List<Vector3> vertices, List<int> markTriangles, List<Vector3> normals, List<Vector2> uv, Vector3[] sectionNormals, Vector3 normal, PolygonLineRecord polygon)
+        {
+            List<PolygonCutter.MarkingDetail> markPatches = new List<PolygonCutter.MarkingDetail>();
+            
+            foreach (var markRecord in markRecords)
+            {
+                var dataIndices = 0;
+                if (markRecord.MarkType >= 3 && markRecord.MarkType <= 9)
+                    dataIndices = markRecord.MarkType;
+                else if (markRecord.MarkType >= 0x11 && markRecord.MarkType <= 0xfe)
+                    dataIndices = 2;
+
+                if (dataIndices == 0)
+                    continue;
+
+                var markVertices = new List<Vector3>();
+                
+                for (var dataIndex = 0; dataIndex < dataIndices * 3; dataIndex += 3)
+                {
+                    var index = (markRecord.Data[dataIndex] / 2 - 1) % polygon.VertexIndices.Length;
+
+                    if (index < 0)
+                        index += polygon.VertexIndices.Length;
+
+                    var referenceVertex = originalVertices[polygon.VertexIndices[index]];
+
+                    var leftVertexIndex = index - 1;
+                    if (leftVertexIndex < 0)
+                        leftVertexIndex += polygon.VertexIndices.Length;
+
+                    var rightVertexIndex = index + 1;
+                    if (rightVertexIndex >= polygon.VertexIndices.Length)
+                        rightVertexIndex -= polygon.VertexIndices.Length;
+
+                    var leftVertex = originalVertices[polygon.VertexIndices[leftVertexIndex]];
+                    var rightVertex = originalVertices[polygon.VertexIndices[rightVertexIndex]];
+
+                    var leftFactor = markRecord.Data[dataIndex + 1];
+                    var rightFactor = markRecord.Data[dataIndex + 2];
+
+                    var vertex = referenceVertex + ((leftVertex - referenceVertex) * leftFactor + (rightVertex - referenceVertex) * rightFactor) / 32f;
+
+                    markVertices.Add(vertex);
+                }
+
+                var markColorInfo = _paletteMapper.GetColorInfo(markRecord.MarkColor, flightGroupColor);
+
+                if (dataIndices == 2)
+                {
+                    // Need to generate our own vertices for lines
+                    var scaleFactor = markRecord.MarkType * _coordinateConverter.ScaleFactor / 2;
+
+                    // TODO: modify the corners based on additional data in the record (once deciphered)
+                    var lineVertices = new List<Vector3>
+                    {
+                        markVertices[0] + Quaternion.LookRotation(markVertices[1] - markVertices[0], normal) * Vector3.left * scaleFactor,
+                        markVertices[0] + Quaternion.LookRotation(markVertices[1] - markVertices[0], normal) * Vector3.right * scaleFactor,
+                        markVertices[1] + Quaternion.LookRotation(markVertices[0] - markVertices[1], normal) * Vector3.left * scaleFactor,
+                        markVertices[1] + Quaternion.LookRotation(markVertices[0] - markVertices[1], normal) * Vector3.right * scaleFactor
+                    };
+
+                    PolygonCutter.MarkingDetail markDetail = new PolygonCutter.MarkingDetail();
+                    markDetail.Colour = markColorInfo;
+                    markDetail.TwoSidedFlag = polygon.TwoSidedFlag;
+                    markDetail.ShadeFlag = polygon.ShadeFlag;
+
+                    markDetail.TriangleList.Add(new PolygonCutter.Vector3(lineVertices[0].x, lineVertices[0].y, lineVertices[0].z));
+                    markDetail.TriangleList.Add(new PolygonCutter.Vector3(lineVertices[1].x, lineVertices[1].y, lineVertices[1].z));
+                    markDetail.TriangleList.Add(new PolygonCutter.Vector3(lineVertices[2].x, lineVertices[2].y, lineVertices[2].z));
+
+                    markDetail.TriangleList.Add(new PolygonCutter.Vector3(lineVertices[0].x, lineVertices[0].y, lineVertices[0].z));
+                    markDetail.TriangleList.Add(new PolygonCutter.Vector3(lineVertices[2].x, lineVertices[2].y, lineVertices[2].z));
+                    markDetail.TriangleList.Add(new PolygonCutter.Vector3(lineVertices[3].x, lineVertices[3].y, lineVertices[3].z));
+
+                    markPatches.Add(markDetail);
+                }
+                else
+                {
+                    if (HasIntersectionPoint(markVertices, out var intersectionPoint, out var splitPoint1, out var splitPoint2))
+                    {
+                        // If the polygon intersects with itself, we need to split it into two separate polygons.
+                        Debug.Log($"Model has intersection point between vertices {splitPoint1} and {splitPoint2} of {markVertices.Count}.");
+
+                        var vertexRange1 = markVertices.Take(splitPoint1).ToList();
+                        var vertexRange2 = markVertices.Skip(splitPoint1).Take(splitPoint2 - splitPoint1).ToList();
+
+                        vertexRange1.Add(intersectionPoint);
+                        vertexRange1.AddRange(markVertices.Skip(splitPoint2));
+
+                        vertexRange2.Insert(0, intersectionPoint);
+
+                        PolygonCutter.MarkingDetail markDetail = null;
+
+                        // Range1
+                        markDetail = new PolygonCutter.MarkingDetail();
+                        markDetail.Colour = markColorInfo;
+                        markDetail.TwoSidedFlag = polygon.TwoSidedFlag;
+                        markDetail.ShadeFlag = polygon.ShadeFlag;
+                        markDetail.TriangleList = PolygonCutter.Cutter.Triangulate(vertexRange1, new PolygonCutter.Vector3(-normal.x, -normal.y, -normal.z));
+
+                        markPatches.Add(markDetail);
+
+                        // Range 2 (or 3 & 4)
+                        if (HasIntersectionPoint(vertexRange2, out intersectionPoint, out splitPoint1, out splitPoint2))
+                        {
+                            // If the polygon intersects with itself, we need to split it into two separate polygons.
+                            Debug.Log($"Model has intersection point between vertices {splitPoint1} and {splitPoint2} of {vertexRange2.Count}.");
+
+                            var vertexRange3 = vertexRange2.Take(splitPoint1).ToList();
+                            var vertexRange4 = vertexRange2.Skip(splitPoint1).Take(splitPoint2 - splitPoint1).ToList();
+
+                            vertexRange3.Add(intersectionPoint);
+                            vertexRange3.AddRange(vertexRange2.Skip(splitPoint2));
+
+                            vertexRange4.Insert(0, intersectionPoint);
+
+                            markDetail = new PolygonCutter.MarkingDetail();
+                            markDetail.Colour = markColorInfo;
+                            markDetail.TwoSidedFlag = polygon.TwoSidedFlag;
+                            markDetail.ShadeFlag = polygon.ShadeFlag;
+                            markDetail.TriangleList = PolygonCutter.Cutter.Triangulate(vertexRange3, new PolygonCutter.Vector3(-normal.x, -normal.y, -normal.z));
+
+                            markPatches.Add(markDetail);
+
+                            vertexRange4.Reverse();
+                            markDetail = new PolygonCutter.MarkingDetail();
+                            markDetail.Colour = markColorInfo;
+                            markDetail.TwoSidedFlag = polygon.TwoSidedFlag;
+                            markDetail.ShadeFlag = polygon.ShadeFlag;
+                            markDetail.TriangleList = PolygonCutter.Cutter.Triangulate(vertexRange4, new PolygonCutter.Vector3(-normal.x, -normal.y, -normal.z));
+
+                            markPatches.Add(markDetail);
+
+                        } else
+                        {
+                            vertexRange2.Reverse();
+                            markDetail = new PolygonCutter.MarkingDetail();
+                            markDetail.Colour = markColorInfo;
+                            markDetail.TwoSidedFlag = polygon.TwoSidedFlag;
+                            markDetail.ShadeFlag = polygon.ShadeFlag;
+                            markDetail.TriangleList = PolygonCutter.Cutter.Triangulate(vertexRange2, new PolygonCutter.Vector3(-normal.x, -normal.y, -normal.z));
+
+                            markPatches.Add(markDetail);
+                        }
+                    }
+                    else
+                    {
+                        PolygonCutter.MarkingDetail markDetail = new PolygonCutter.MarkingDetail();
+                        markDetail.Colour = markColorInfo;
+                        markDetail.TwoSidedFlag = polygon.TwoSidedFlag;
+                        markDetail.ShadeFlag = polygon.ShadeFlag;
+                        markDetail.TriangleList = PolygonCutter.Cutter.Triangulate(markVertices, new PolygonCutter.Vector3(-normal.x, -normal.y, -normal.z));
+
+                        markPatches.Add(markDetail);
+                    }
+
+                    bool HasIntersectionPoint(List<Vector3> verts, out Vector3 intersection, out int firstSplit, out int secondSplit)
+                    {
+                        // TODO: this needs to be cleaned up
+                        var projection = Get2dProjection(normal, verts.ToArray()).ToList();
+                        for (var i = 0; i < projection.Count; i++)
+                        {
+                            var point1Start = projection[i];
+                            var point1End = GetEndPoint2d(i);
+
+                            // Skip the adjacent vertex because it won't intersect.
+                            for (var j = i + 2; j < projection.Count; j++)
+                            {
+                                // Don't test the first and last together since they will be adjacent.
+                                if (i == 0 && j == projection.Count - 1)
+                                    continue;
+
+                                var point2Start = projection[j];
+                                var point2End = GetEndPoint2d(j);
+
+                                if (AreLineSegmentsCrossing(point1Start, point1End, point2Start, point2End))
+                                {
+                                    var point1Start3 = verts[i];
+                                    var point1End3 = GetEndPoint3d(i);
+                                    var vector1 = point1End3 - point1Start3;
+
+                                    var point2Start3 = verts[j];
+                                    var point2End3 = GetEndPoint3d(j);
+                                    var vector2 = point2End3 - point2Start3;
+
+                                    firstSplit = i + 1;
+                                    secondSplit = j + 1;
+
+                                    if (ClosestPointsOnTwoLines(out var closestPoint1, out var closestPoint2, point1Start3, vector1, point2Start3, vector2))
+                                    {
+                                        intersection = (closestPoint1 + closestPoint2) / 2;
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+
+                        intersection = Vector3.zero;
+                        firstSplit = 0;
+                        secondSplit = 0;
+                        return false;
+
+                        Vector2 GetEndPoint2d(int currentIndex) => projection[(currentIndex + 1) % projection.Count];
+                        Vector3 GetEndPoint3d(int currentIndex) => verts[(currentIndex + 1) % verts.Count];
+                    }
+                }
+            }
+
+            return markPatches;
         }
 
         private void SetMarkingsOnMesh(IEnumerable<MarkRecord> markRecords, int? flightGroupColor, Vector3[] originalVertices, List<Vector3> vertices, List<int> markTriangles, List<Vector3> normals, List<Vector2> uv, Vector3[] sectionNormals, Vector3 normal, PolygonLineRecord polygon)

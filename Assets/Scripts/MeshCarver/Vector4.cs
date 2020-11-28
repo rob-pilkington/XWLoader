@@ -34,6 +34,16 @@ namespace PolygonCutter
             dz = PointB.z - PointA.z;
         }
 
+        public Vector3Line(Vector3Line vClone)
+        {
+            this.x = vClone.x;
+            this.y = vClone.y;
+            this.z = vClone.z;
+            this.dx = vClone.dx;
+            this.dy = vClone.dy;
+            this.dz = vClone.dz;
+        }
+
         public Vector3 Dir()
         {
             return new Vector3(dx, dy, dz);
@@ -72,6 +82,25 @@ namespace PolygonCutter
             float s = -(plane.a * x + plane.b * y + plane.c * z + plane.d) / nu;
 
             return s;
+        }
+
+        /// <summary>
+        /// Returns the nearest point between a line and a point. Distance is a number between 0 and 1
+        /// </summary>
+        /// <param name="vTest"></param>
+        /// <param name="Distance"></param>
+        /// <returns></returns>
+        public Vector3 FindNearestPoint(Vector3 vTest, out float Distance)
+        {
+            float LineLen = Dir().Len();
+
+            float t = Vector3.Dot(Dir(), (vTest - Origin())) / Vector3.Dot(Dir(), Dir());
+
+            Distance = t;
+
+            Vector3 vFound = Origin() + t * Dir();
+
+            return vFound;
         }
     }
 }

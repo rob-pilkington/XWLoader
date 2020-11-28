@@ -65,6 +65,16 @@ namespace PolygonCutter
             return new Plane(n.x, n.y, n.z, d);
         }
 
+        public static Plane FromOriginAndNormal(Vector3 origin, Vector3 normal)
+        {
+            Vector3 n = normal.Normalise();
+
+            //ax + by + cz + d = 0
+
+            float d = -(n.x * origin.x + n.y * origin.y + n.z * origin.z);
+            return new Plane(n.x, n.y, n.z, d);
+        }
+
         public float PointValue(Vector3 v)
         {
             return (a * v.x + b * v.y + c * v.z + d);

@@ -566,7 +566,7 @@ public class ModelLoader : MonoBehaviour
         _shipContainer = meshCreater.CreateGameObject(sections, sectionHardpoints, _currentLod, _currentFlightGroupColorIndex, disabledMarkingSectionIndices);
 
         foreach (var meshRenderer in _shipContainer.GetComponentsInChildren<MeshRenderer>())
-            if (meshRenderer.name == "Geometry" || meshRenderer.name == "Marking")
+            if (meshRenderer.name.StartsWith("Section", StringComparison.OrdinalIgnoreCase))
                 meshRenderer.SetPropertyBlock(_materialPropertyBlocks[recordType]);
     }
 

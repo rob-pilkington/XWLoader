@@ -35,12 +35,7 @@ namespace Assets.Scripts
                 var section = sections[sectionIndex];
                 var sectionObject = UnityEngine.Object.Instantiate(_baseSection, _baseTransform != null ? _baseTransform : gameObject.transform);
 
-                var transforms = sectionObject.GetComponentsInChildren<Transform>();
-
-                var geometry = transforms.First(x => x.name == "Geometry");
-                var marking = transforms.First(x => x.name == "Marking");
-
-                SetMesh(sectionObject, geometry, marking, section, flightGroupColor, !disabledMarkingSectionIndices?.Contains(sectionIndex) ?? true, lodLevel);
+                SetMesh(sectionObject, section, flightGroupColor, !disabledMarkingSectionIndices?.Contains(sectionIndex) ?? true, lodLevel);
                 sectionObject.name = $"Section{sectionIndex}";
 
                 if (hardpoints.Length > sectionIndex)
@@ -59,10 +54,9 @@ namespace Assets.Scripts
             return gameObject;
         }
 
-        public void SetMesh(GameObject sectionObject, Transform geometryTransform, Transform markingTransform, SectionRecord section, int? flightGroupColor, bool enableMarkings, int lodLevel = 0)
+        public void SetMesh(GameObject sectionObject, SectionRecord section, int? flightGroupColor, bool enableMarkings, int lodLevel = 0)
         {
-            var mesh = geometryTransform.GetComponent<MeshFilter>().mesh;
-            var markingMesh = markingTransform.GetComponent<MeshFilter>().mesh;
+            var mesh = sectionObject.GetComponent<MeshFilter>().mesh;
 
             var vertices = new List<Vector3>();
             var triangles = new List<int>();
@@ -257,19 +251,13 @@ namespace Assets.Scripts
             var verticesArray = vertices.Select(x => x - center).ToArray();
                         
             mesh.vertices = verticesArray;
-            markingMesh.vertices = verticesArray;
 
             mesh.triangles = triangles.ToArray();
-            markingMesh.triangles = markTriangles.ToArray();
 
             if (normals.Count > 0)
-            {
                 mesh.normals = normals.ToArray();
-                markingMesh.normals = normals.ToArray();
-            }
 
             mesh.uv = uv.ToArray();
-            markingMesh.uv = uv.ToArray();
         }
         
         private List<PolygonCutter.MarkingDetail> GetMarkingsOnMesh(IEnumerable<MarkRecord> markRecords, int? flightGroupColor, Vector3[] originalVertices, List<Vector3> vertices, List<int> markTriangles, List<Vector3> normals, List<Vector2> uv, Vector3[] sectionNormals, Vector3 normal, PolygonLineRecord polygon)
@@ -575,7 +563,7 @@ namespace Assets.Scripts
                         markVertices[1] + Quaternion.LookRotation(markVertices[0] - markVertices[1], normal) * Vector3.left * scaleFactor,
                         markVertices[1] + Quaternion.LookRotation(markVertices[0] - markVertices[1], normal) * Vector3.right * scaleFactor
                     };
-                    
+
                     // We have two points for the normals, work with what we have
                     List<Vector3> lineNormals = CalculateMarkingNormals(markVertices, markOrigTri).ToList();
 
@@ -699,7 +687,7 @@ namespace Assets.Scripts
 
         private static Vector3 LardoNormalInterpolation(Vector3[] originalVertices, Vector3[] sectionNormals, PolygonLineRecord polygon, Vector3 vertex, Vector3 markNormal, int[] verticesSurround)
         {
-           
+
             // Get the barycentric coordinates of this point
             Vector3 a = originalVertices[verticesSurround[0]];
             Vector3 b = originalVertices[verticesSurround[1]];
@@ -707,7 +695,7 @@ namespace Assets.Scripts
 
             // Firstly flatten down this point back to the face plane
             Plane FacePlane = new Plane(a, b, c);
-            
+
             float Offset = FacePlane.GetDistanceToPoint(vertex);
 
             vertex -= FacePlane.normal * Offset;    // Reverse the offset added earlier for the overlay hack

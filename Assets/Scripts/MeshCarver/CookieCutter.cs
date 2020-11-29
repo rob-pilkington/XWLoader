@@ -127,6 +127,11 @@ namespace PolygonCutter
                 Plane Face12 = Plane.FromTriangle(V1, V2, V2p);
                 Plane Face20 = Plane.FromTriangle(V2, V0, V0p);
 
+                if(float.IsNaN(Face01.a) || float.IsNaN(Face12.a) || float.IsNaN(Face20.a))
+                {
+                    UnityEngine.Debug.LogError("Cutter Planes were invalid");
+                }
+
                 Faces[i * 3 + 0] = Face01;
                 Faces[i * 3 + 1] = Face12;
                 Faces[i * 3 + 2] = Face20;

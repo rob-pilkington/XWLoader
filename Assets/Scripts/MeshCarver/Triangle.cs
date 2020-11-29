@@ -31,9 +31,11 @@ namespace PolygonCutter
                 int v1 = vertIndices[triangleIndices[j + 1]];
                 int v2 = vertIndices[triangleIndices[j + 2]];
 
-                var uN = UnityEngine.Vector3.Cross(originalVerts[vertIndices[1]] - originalVerts[vertIndices[0]], originalVerts[vertIndices[2]] - originalVerts[vertIndices[0]]).normalized;
+                var uN = UnityEngine.Vector3.Cross(originalVerts[v1] - originalVerts[v0], originalVerts[v2] - originalVerts[v0]).normalized;
 
-                result.Add(new Triangle(v0, v1, v2, new Vector3(uN.x, uN.y, uN.z)));
+                // Some of the expansion models seem to have been made without due care and attention and have zero area triangles
+                if (uN.magnitude != 0f)
+                    result.Add(new Triangle(v0, v1, v2, new Vector3(uN.x, uN.y, uN.z)));
             }
 
             return result;

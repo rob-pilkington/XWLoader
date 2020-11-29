@@ -136,7 +136,7 @@ namespace PolygonCutter
             return false;
         }
 
-        private static List<HullEdge> CutterPerimeter(CookieCutter tCut, Triangle tBase, Plane pTri, List<PositionAndNormal> v3MeshPoly, bool CullExternalTriangles)
+        public static List<HullEdge> CutterPerimeter(CookieCutter tCut, Triangle tBase, Plane pTri, List<PositionAndNormal> v3MeshPoly, bool CullExternalTriangles)
         {
             int iEdge = tCut.FirstExternalEdge();
 
@@ -753,6 +753,15 @@ namespace PolygonCutter
 
             if (float.IsNaN(pTri.a) || float.IsNaN(pTri.b) || float.IsNaN(pTri.c) || float.IsNaN(pTri.d))
                 return new List<Triangle>();    // Sliver triangle with zero area, impossible to carve
+            
+            bool ReversedCutter = false;
+
+            // We can't cut a face which is facing the wrong way because _maths_
+            if (Vector3.Dot(tCut.Edges[0].Dir(), pTri.Normal()) < 0f)
+            {
+                // The cutter has been built using a backwards face normal, the final list of hulledges will need flipped
+                ReversedCutter = true;
+            }
 
             tCut.StashFaces(V0, V1, V2, CullExternalTriangles);    // Make sure we perform any cuts which lie exactly along an edge correctly
             tCut.ResetPreviousClipEdges();  // Reset the edge clipped stored data
@@ -779,6 +788,18 @@ namespace PolygonCutter
 
             // Now mark dead hull edges
             List<HullEdge> FinalCutterHullEdges = FilterDeadHullEdges(lstUncutCutterEdges, v3MeshPoly, tCutTri, true);
+
+            if (ReversedCutter)
+            {
+                foreach(var flipHE in FinalCutterHullEdges)
+                {
+                    int newV1 = flipHE.V0;
+                    int newV0 = flipHE.V1;
+
+                    flipHE.V0 = newV0;
+                    flipHE.V1 = newV1;
+                }
+            }
 
             tCut.UnstashFaces();
             tCut.ResetPreviousClipEdges();
@@ -1347,6 +1368,180 @@ namespace PolygonCutter
                         VertIndex[1] = heLoopEdge.V0;
 
                         Vector3 NV2 = v3MeshPoly[heLoopEdge.V1].Pos;
+                        VertIndex[2] = heLoopEdge.V1;
+
+                        HullEdge hePrev = LoopEdges[i].PrevEdge;
+                        HullEdge heNext = heLoopEdge.NextEdge;
+
+                        lstReturn.Add(new Triangle(VertIndex[0], VertIndex[1], VertIndex[2], FaceNormal));
+
+                        heLoopEdge = LoopEdges[i];
+
+                        LoopEdges.Remove(heLoopEdge);
+
+                        heLoopEdge = heLoopEdge.NextEdge;
+
+                        LoopEdges.Remove(heLoopEdge);
+
+                        // Finally, if the next and the previous edge are the same, we should be done, remove the edge from the LoopEdges
+                        // Otherwise add in a new loop edge and connect it up to the Loop properly
+                        if (hePrev == heNext)
+                        {
+                            LoopEdges.Remove(hePrev);
+                        }
+                        else
+                        {
+                            HullEdge hullEdge = new HullEdge();
+
+                            if (VertIndex[0] == VertIndex[2] && ReportErrors)
+                            {
+                                UnityEngine.Debug.LogError("Zero length hull edge");
+                            }
+
+                            hullEdge.V0 = VertIndex[0];
+                            hullEdge.V1 = VertIndex[2];
+
+                            hullEdge.SetPrev(hePrev);
+                            hullEdge.SetNext(heNext);
+
+                            LoopEdges.Add(hullEdge);
+                        }
+                    }
+                }
+            }
+
+            return lstReturn;
+        }
+
+        public static List<Triangle> WindEdges(List<HullEdge> FinalLoops, List<Vector3> v3MeshPoly, Vector3 FaceNormal)
+        {
+            // Create a convex hull from this loop of edges and points. For now, just do a 012, 023, 034, 045 etc. it won't be convex but it's a proof of concept
+            List<Triangle> lstReturn = new List<Triangle>();
+            foreach (HullEdge he in FinalLoops)
+            {
+                List<HullEdge> LoopEdges = new List<HullEdge>();
+                HullEdge heStartEdge = he;
+                HullEdge heLoopEdge = he;
+
+                int InfiniteLoop = 0;
+                do
+                {
+                    if (heLoopEdge == null)
+                    {
+                        if (ReportErrors)
+                            UnityEngine.Debug.LogError("Winding Hull Loop had null segment");
+                        return lstReturn;
+                    }
+                    LoopEdges.Add(heLoopEdge);
+                    heLoopEdge = heLoopEdge.NextEdge;
+                    InfiniteLoop++;
+
+                    if (InfiniteLoop > 100)
+                        return new List<Triangle>();
+                } while (heLoopEdge != heStartEdge);
+
+                List<int> UnassignedVertex = new List<int>();
+                for (int i = 0; i < LoopEdges.Count; i++)
+                    UnassignedVertex.Add(LoopEdges[i].V0);  // Verts which we can't enclose
+
+                while (LoopEdges.Count > 0)
+                {
+                    float LargestArea = 10f;
+                    int LargestAreaIndex = -1;
+
+                    for (int sigma = 0; sigma < 5; sigma++)
+                    {
+                        float fSigma = 0.0001f - sigma * 0.00005f;
+
+                        for (int i = 0; i < LoopEdges.Count; i++)
+                        {
+                            // Check triangle i, i+1, i+2.
+                            int[] VertIndex = new int[3];
+
+                            heLoopEdge = LoopEdges[i];
+                            Vector3 NV0 = v3MeshPoly[heLoopEdge.V0];
+                            VertIndex[0] = heLoopEdge.V0;
+                            heLoopEdge = heLoopEdge.NextEdge;
+
+                            Vector3 NV1 = v3MeshPoly[heLoopEdge.V0];
+                            VertIndex[1] = heLoopEdge.V0;
+
+                            Vector3 NV2 = v3MeshPoly[heLoopEdge.V1];
+                            VertIndex[2] = heLoopEdge.V1;
+
+                            HullEdge hePrev = LoopEdges[i].PrevEdge;
+                            HullEdge heNext = heLoopEdge.NextEdge;
+
+                            // The normal.pTri.Normal MUST be positive (same winding direction).
+                            float Winding = Vector3.Dot(Plane.FromTriangle(NV0, NV1, NV2).Normal(), FaceNormal);
+                            if (Winding <= 0f)
+                                continue;
+
+                            // And the resulting triangle cannot contain any other verts (excluding i, i+1, i+2)
+                            bool ValidTriangle = true;
+
+                            for (int j = 0; j < UnassignedVertex.Count; j++)
+                            {
+                                if (VertIndex.Contains(UnassignedVertex[j]))
+                                    continue;
+
+                                Vector3 vCheck = v3MeshPoly[UnassignedVertex[j]];
+                                Vector3 NV0p = NV0 + FaceNormal;
+                                Vector3 NV1p = NV1 + FaceNormal;
+                                Vector3 NV2p = NV2 + FaceNormal;
+
+                                Plane P01 = Plane.FromTriangle(NV0, NV1, NV1p);
+                                Plane P12 = Plane.FromTriangle(NV1, NV2, NV2p);
+                                Plane P20 = Plane.FromTriangle(NV2, NV0, NV0p);
+
+
+                                if (P01.PointValue(vCheck) < fSigma && P12.PointValue(vCheck) < fSigma && P20.PointValue(vCheck) < fSigma)
+                                {
+                                    ValidTriangle = false;
+                                    break;
+                                }
+                            }
+
+                            if (!ValidTriangle)
+                                continue;
+
+
+                            // How close to 60 degrees is this triangle? Avoid slivers
+                            float Area = Math.Abs(1.047f - (float)Math.Acos(Vector3.Dot((v3MeshPoly[VertIndex[1]] - v3MeshPoly[VertIndex[0]]).Normalise(), (v3MeshPoly[VertIndex[2]] - v3MeshPoly[VertIndex[0]]).Normalise())));
+                            // The closer to 0, the closer to an equilateral triangle we are
+
+                            if (Area < LargestArea)
+                            {
+                                LargestArea = Area;
+                                LargestAreaIndex = i;
+                            }
+                        }
+
+                        if (LargestAreaIndex != -1)
+                            break;
+                    }
+
+                    // Add the triangle which ad the biggest area - try to avoid slivers.
+                    if (LargestAreaIndex == -1)
+                    {
+                        if (ReportErrors)
+                            UnityEngine.Debug.LogError("Could not find an edge which was not invalid???");
+                        return lstReturn;
+                    }
+
+                    {
+                        int i = LargestAreaIndex;
+                        int[] VertIndex = new int[3];
+
+                        heLoopEdge = LoopEdges[i];
+                        Vector3 NV0 = v3MeshPoly[heLoopEdge.V0];
+                        VertIndex[0] = heLoopEdge.V0;
+                        heLoopEdge = heLoopEdge.NextEdge;
+
+                        Vector3 NV1 = v3MeshPoly[heLoopEdge.V0];
+                        VertIndex[1] = heLoopEdge.V0;
+
+                        Vector3 NV2 = v3MeshPoly[heLoopEdge.V1];
                         VertIndex[2] = heLoopEdge.V1;
 
                         HullEdge hePrev = LoopEdges[i].PrevEdge;

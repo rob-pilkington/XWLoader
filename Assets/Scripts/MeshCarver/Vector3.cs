@@ -18,6 +18,13 @@ namespace PolygonCutter
             this.z = z;
         }
 
+        public Vector3(Vector3 clone)
+        {
+            x = clone.x;
+            y = clone.y;
+            z = clone.z;
+        }
+
         public float x, y, z;
 
         public static Vector3 operator+ (Vector3 a, Vector3 b)

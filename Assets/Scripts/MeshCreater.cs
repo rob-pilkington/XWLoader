@@ -145,7 +145,7 @@ namespace Assets.Scripts
                         {
                             var markDetail = markDetails[j];
                             PolygonCutter.CookieCutter cc = PolygonCutter.CookieCutter.MakeCC(markDetail.TriangleList, new PolygonCutter.Vector3(normal.x, normal.y, normal.z));
-                            
+
                             foreach (PolygonCutter.Triangle t in baseTris)
                             {
                                 if ((j <= DebugIndex || DebugIndex == -1) && PolygonCutter.Cutter.ChopPolygonCheck(baseMeshPoints, t, cc))

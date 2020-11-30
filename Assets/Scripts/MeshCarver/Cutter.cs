@@ -1615,13 +1615,13 @@ namespace PolygonCutter
                     Vector3 N2 = v3MeshData[t.VertexIndex[prevv]].Normal.Normalise();
 
                     // If the face normal and the vertex normal aren't within 60 degrees of each other, change the normal to be the average of the current + face
-                    if (Vector3.Dot(Face.Normal(), N0) < 0.5f)
+                    if (Vector3.Dot(Face.Normal(), N0) < 0.25f)
                         v3MeshData[t.VertexIndex[v]].Normal = (N0 + Face.Normal()).Normalise();
 
-                    if (Vector3.Dot(Face.Normal(), N1) < 0.5f)
+                    if (Vector3.Dot(Face.Normal(), N1) < 0.25f)
                         v3MeshData[t.VertexIndex[nextv]].Normal = (N1 + Face.Normal()).Normalise();
 
-                    if (Vector3.Dot(Face.Normal(), N2) < 0.5f)
+                    if (Vector3.Dot(Face.Normal(), N2) < 0.25f)
                         v3MeshData[t.VertexIndex[prevv]].Normal = (N2 + Face.Normal()).Normalise();
                 }
             }

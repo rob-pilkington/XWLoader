@@ -16,6 +16,18 @@ namespace Assets.Scripts
         private readonly IPaletteMapper _paletteMapper;
         private readonly CoordinateConverter _coordinateConverter;
 
+        public struct MeshInfo
+        {
+            public MeshInfo(Mesh mesh, Vector3 center)
+            {
+                Mesh = mesh;
+                Center = center;
+            }
+
+            public readonly Mesh Mesh;
+            public readonly Vector3 Center;
+        }
+
         public MeshCreater(CoordinateConverter coordinateConverter, GameObject baseObject, GameObject baseSection, GameObject baseHardpoint, Transform transform, IPaletteMapper paletteMapper)
         {
             _coordinateConverter = coordinateConverter;
@@ -28,21 +40,27 @@ namespace Assets.Scripts
 
         public GameObject CreateGameObject(SectionRecord[] sections, HardpointRecord[][] hardpoints, int lodLevel = 0, int? flightGroupColor = null, int[] disabledMarkingSectionIndices = null)
         {
+            var meshInfos = CreateMeshes(sections, flightGroupColor, disabledMarkingSectionIndices, lodLevel);
+
+            return CreateGameObject(meshInfos, hardpoints);
+        }
+
+        public GameObject CreateGameObject(MeshInfo[] meshInfos, HardpointRecord[][] hardpoints)
+        {
             var gameObject = UnityEngine.Object.Instantiate(_baseObject, _baseTransform);
 
-            for (var sectionIndex = 0; sectionIndex < sections.Length; sectionIndex++)
+            for (var meshInfoIndex = 0; meshInfoIndex < meshInfos.Length; meshInfoIndex++)
             {
-                var section = sections[sectionIndex];
                 var sectionObject = UnityEngine.Object.Instantiate(_baseSection, _baseTransform != null ? _baseTransform : gameObject.transform);
 
-                SetMesh(sectionObject, section, flightGroupColor, !disabledMarkingSectionIndices?.Contains(sectionIndex) ?? true, lodLevel);
-                sectionObject.name = $"Section{sectionIndex}";
+                SetMesh(sectionObject, meshInfos[meshInfoIndex]);
+                sectionObject.name = $"Section{meshInfoIndex}";
 
-                if (hardpoints.Length > sectionIndex)
+                if (hardpoints.Length > meshInfoIndex)
                 {
-                    for (var hardpointIndex = 0; hardpointIndex < hardpoints[sectionIndex].Length; hardpointIndex++)
+                    for (var hardpointIndex = 0; hardpointIndex < hardpoints[meshInfoIndex].Length; hardpointIndex++)
                     {
-                        var hardpoint = hardpoints[sectionIndex][hardpointIndex];
+                        var hardpoint = hardpoints[meshInfoIndex][hardpointIndex];
 
                         var hardpointObject = UnityEngine.Object.Instantiate(_baseHardpoint, sectionObject.transform);
                         hardpointObject.name = $"Hardpoint{hardpointIndex}";
@@ -56,7 +74,32 @@ namespace Assets.Scripts
 
         public void SetMesh(GameObject sectionObject, SectionRecord section, int? flightGroupColor, bool enableMarkings, int lodLevel = 0)
         {
-            var mesh = sectionObject.GetComponent<MeshFilter>().mesh;
+            var meshInfo = CreateMesh(section, flightGroupColor, enableMarkings, lodLevel);
+
+            SetMesh(sectionObject, meshInfo);
+        }
+
+        public void SetMesh(GameObject sectionObject, MeshInfo meshInfo)
+        {
+            var meshFilter = sectionObject.GetComponent<MeshFilter>();
+
+            meshFilter.mesh = meshInfo.Mesh;
+            sectionObject.transform.localPosition = meshInfo.Center;
+        }
+
+        public MeshInfo[] CreateMeshes(SectionRecord[] sections, int? flightGroupColor, int[] disabledMarkingSectionIndices = null, int lodLevel = 0)
+        {
+            var meshInfos = new MeshInfo[sections.Length];
+
+            for (var i = 0; i < sections.Length; i++)
+                meshInfos[i] = CreateMesh(sections[i], flightGroupColor, !disabledMarkingSectionIndices?.Contains(i) ?? true, lodLevel);
+
+            return meshInfos;
+        }
+
+        public MeshInfo CreateMesh(SectionRecord section, int? flightGroupColor, bool enableMarkings, int lodLevel = 0)
+        {
+            var mesh = new Mesh();
 
             var vertices = new List<Vector3>();
             var triangles = new List<int>();
@@ -160,10 +203,10 @@ namespace Assets.Scripts
 
                         // Carving leaves a lot of extra verts which could be killed, clean up the new triangles
                         int CulledVerts = PolygonCutter.Cutter.RemoveUselessPoints(baseTris, baseMeshPoints, 0.99999999f);  // 0.08 degrees
-                        
-                        
+
+
                         // Now get the marking triangles
-                        for (int j = 0; j < markDetails.Count ; j++)
+                        for (int j = 0; j < markDetails.Count; j++)
                         {
                             var markDetail = markDetails[j];
                             PolygonCutter.CookieCutter cc = PolygonCutter.CookieCutter.MakeCC(markDetail.TriangleList, new PolygonCutter.Vector3(normal.x, normal.y, normal.z));
@@ -196,7 +239,8 @@ namespace Assets.Scripts
                                         // Remove high priority meshes
                                         selfCutMarkingTris.AddRange(PolygonCutter.Cutter.ChopPolygon(t2, cc, baseMeshPoints));
                                         CutsMade = true;
-                                    } else
+                                    }
+                                    else
                                     {
                                         selfCutMarkingTris.Add(t2);
                                     }
@@ -221,7 +265,7 @@ namespace Assets.Scripts
                             UnityEngine.Debug.Log($"Removed {CulledVerts} carving verts");
                     }
 
-                    
+
 
                     PolygonCutter.Triangle.ReverseTriangleList(baseTris, baseMeshPoints, originalVertices, out sectionNormals, out triangleIndices, out vertexIndices);
 
@@ -245,11 +289,9 @@ namespace Assets.Scripts
             // May want to make recentering an optional feature for the library rather than mandatory if there turns out to
             // be a practical benefit to doing so.
             var center = _coordinateConverter.ConvertCoordinates((lodRecord.BoundingBox1 + lodRecord.BoundingBox2) / 2);
-                        
-            sectionObject.transform.localPosition = center;
-                        
+
             var verticesArray = vertices.Select(x => x - center).ToArray();
-                        
+
             mesh.vertices = verticesArray;
 
             mesh.triangles = triangles.ToArray();
@@ -258,12 +300,14 @@ namespace Assets.Scripts
                 mesh.normals = normals.ToArray();
 
             mesh.uv = uv.ToArray();
+
+            return new MeshInfo(mesh, center);
         }
-        
+
         private List<PolygonCutter.MarkingDetail> GetMarkingsOnMesh(IEnumerable<MarkRecord> markRecords, int? flightGroupColor, Vector3[] originalVertices, List<Vector3> vertices, List<int> markTriangles, List<Vector3> normals, List<Vector2> uv, Vector3[] sectionNormals, Vector3 normal, PolygonLineRecord polygon)
         {
             List<PolygonCutter.MarkingDetail> markPatches = new List<PolygonCutter.MarkingDetail>();
-            
+
             foreach (var markRecord in markRecords)
             {
                 var dataIndices = 0;
@@ -276,7 +320,7 @@ namespace Assets.Scripts
                     continue;
 
                 var markVertices = new List<Vector3>();
-                
+
                 for (var dataIndex = 0; dataIndex < dataIndices * 3; dataIndex += 3)
                 {
                     var index = (markRecord.Data[dataIndex] / 2 - 1) % polygon.VertexIndices.Length;
@@ -393,7 +437,8 @@ namespace Assets.Scripts
 
                             markPatches.Add(markDetail);
 
-                        } else
+                        }
+                        else
                         {
                             vertexRange2.Reverse();
                             markDetail = new PolygonCutter.MarkingDetail();
@@ -522,7 +567,7 @@ namespace Assets.Scripts
                     markOrigTri.Add(OrigIndices);
                 }
 
-                Vector3[] CalculateMarkingNormals(List<Vector3> verticesToUse, List<int []> verticesSurround)
+                Vector3[] CalculateMarkingNormals(List<Vector3> verticesToUse, List<int[]> verticesSurround)
                 {
                     if (sectionNormals.Length == 0 || !polygon.ShadeFlag)
                         return new Vector3[0];
@@ -864,7 +909,7 @@ namespace Assets.Scripts
         }
 
         protected int[] GetTriangleIndices(Vector3[] vertices) => new Triangulator(Get2dProjection(CalculateNormal(vertices.ToList()), vertices)).Triangulate();
-        
+
         /// <remarks>
         /// https://answers.unity.com/questions/1522620/converting-a-3d-polygon-into-a-2d-polygon.html
         /// </remarks>
@@ -1006,7 +1051,7 @@ namespace Assets.Scripts
             var lineVecB = pointB2 - pointB1;
 
             bool valid = ClosestPointsOnTwoLines(out var closestPointA, out var closestPointB, pointA1, lineVecA.normalized, pointB1, lineVecB.normalized);
-            
+
             return valid
                 // lines are not parallel
                 ? (PointOnWhichSideOfLineSegment(pointA1, pointA2, closestPointA) == 0)

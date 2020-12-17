@@ -129,16 +129,15 @@ namespace Assets.Scripts
 
                     var radius = polygon.LineRadius * _coordinateConverter.ScaleFactor;
 
-                    var linePolygonCount = CreateCylinderFromLine(lineVertices[0], lineVertices[1], normal, radius, out var linePolygonVertices, out var lineVertexIndices, out var linePolygonNormals);
+                    var linePolygonCount = CreateCylinderFromLine(lineVertices[0], lineVertices[1], normal, radius, out var linePolygonVertices, out var lineVertexNormals, out var lineVertexIndices, out var linePolygonNormals);
 
                     for (var j = 0; j < linePolygonCount; j++)
                     {
-                        NormalizeAndReorder(linePolygonNormals[j], linePolygonVertices[j]);
+                        NormalizeAndReorder(linePolygonNormals[j], linePolygonVertices[j], lineVertexNormals[j]);
 
                         var lineTriangleIndices = GetTriangleIndices(linePolygonVertices[j].ToArray());
 
-                        // TODO: need to generate new normals (from CreateCylinderFromLine) if polygon.ShadeFlag is set.
-                        CopyVertices(linePolygonVertices[j], new Vector3[0], colorInfo.IsFlatShaded ? false : polygon.ShadeFlag, lineVertexIndices[j].ToArray(), lineTriangleIndices, colorInfo, linePolygonNormals[j], vertices, triangles, normals, uv);
+                        CopyVertices(linePolygonVertices[j], lineVertexNormals[j].ToArray(), colorInfo.IsFlatShaded ? false : polygon.ShadeFlag, lineVertexIndices[j].ToArray(), lineTriangleIndices, colorInfo, linePolygonNormals[j], vertices, triangles, normals, uv);
                     }
                 }
                 else
@@ -780,10 +779,15 @@ namespace Assets.Scripts
             return markNormal;
         }
 
-        private static void NormalizeAndReorder(Vector3 normal, List<Vector3> markVertices)
+        private static void NormalizeAndReorder(Vector3 normal, List<Vector3> vertices, List<Vector3> vertexNormals = null)
         {
-            if (Vector3.Angle(normal, CalculateNormal(markVertices)) > 91) // uhh, wrong direction, so flip it
-                markVertices.Reverse();
+            if (Vector3.Angle(normal, CalculateNormal(vertices)) > 91) // uhh, wrong direction, so flip it
+            {
+                vertices.Reverse();
+
+                if (vertexNormals != null)
+                    vertexNormals.Reverse();
+            }
         }
 
         private static Vector3 CalculateNormal(List<Vector3> vertices)
@@ -801,9 +805,8 @@ namespace Assets.Scripts
             return normal.normalized;
         }
 
-        protected int CreateCylinderFromLine(Vector3 point1, Vector3 point2, Vector3 normal, float radius, out List<List<Vector3>> vertices, out List<List<int>> polygonIndices, out List<Vector3> polygonNormals)
+        protected int CreateCylinderFromLine(Vector3 point1, Vector3 point2, Vector3 normal, float radius, out List<List<Vector3>> vertices, out List<List<Vector3>> vertexNormals, out List<List<int>> polygonIndices, out List<Vector3> polygonNormals)
         {
-            // TODO: check to see if we should add vertex normals and add them if necessary
             // TODO: paramatarize granularity
             const int Sides = 6;
             // TODO: this seems to make a lot of lines too big. There may be a bit more going on with line size.
@@ -811,25 +814,29 @@ namespace Assets.Scripts
             //radius *= LineScaleFactor;
 
             vertices = new List<List<Vector3>>();
+            vertexNormals = new List<List<Vector3>>();
             polygonIndices = new List<List<int>>();
             polygonNormals = new List<Vector3>();
 
             var rotateHalfStep = Quaternion.AngleAxis(360 / (Sides * 2), point2 - point1);
 
             var allVertices = new List<List<Vector3>>();
+            var allVertexNormals = new List<Vector3>();
             var thisNormal = normal;
             for (var side = 0; side < Sides; side++)
             {
-                thisNormal = rotateHalfStep * thisNormal;
-                polygonNormals.Add(thisNormal);
-
-                thisNormal = rotateHalfStep * thisNormal;
-
                 allVertices.Add(new List<Vector3>
                 {
                     point1 + thisNormal * radius,
                     point2 + thisNormal * radius
                 });
+
+                allVertexNormals.Add(thisNormal);
+
+                thisNormal = rotateHalfStep * thisNormal;
+                polygonNormals.Add(thisNormal);
+
+                thisNormal = rotateHalfStep * thisNormal;
             }
 
             for (var side = 0; side < Sides; side++)
@@ -847,23 +854,41 @@ namespace Assets.Scripts
                 polygonIndices.Add(Enumerable.Range(0, 4).ToList());
 
                 vertices.Add(sideVertices);
+
+                vertexNormals.Add(new List<Vector3>
+                {
+                    allVertexNormals[side],
+                    allVertexNormals[side],
+                    allVertexNormals[nextSide],
+                    allVertexNormals[nextSide]
+                });
             }
+
+            var cap1Normal = (point1 - point2).normalized;
+            var cap2Normal = (point2 - point1).normalized;
 
             var cap1 = new List<Vector3>();
             var cap2 = new List<Vector3>();
+            var cap1VertexNormals = new List<Vector3>();
+            var cap2VertexNormals = new List<Vector3>();
             for (var side = 0; side < Sides; side++)
             {
                 cap1.Add(allVertices[side][0]);
                 cap2.Add(allVertices[side][1]);
+
+                cap1VertexNormals.Add(cap1Normal);
+                cap2VertexNormals.Add(cap2Normal);
             }
 
             vertices.Add(cap1);
             vertices.Add(cap2);
+            vertexNormals.Add(cap1VertexNormals);
+            vertexNormals.Add(cap2VertexNormals);
             polygonIndices.Add(Enumerable.Range(0, Sides).ToList());
             polygonIndices.Add(Enumerable.Range(0, Sides).ToList());
 
-            polygonNormals.Add((point1 - point2).normalized);
-            polygonNormals.Add((point2 - point1).normalized);
+            polygonNormals.Add(cap1Normal);
+            polygonNormals.Add(cap2Normal);
 
             return Sides + 2;
         }

@@ -557,7 +557,7 @@ public class ModelLoader : MonoBehaviour
 
         var coordinateConverter = isBigShip ? _bigCoordinateConverter : _smallCoordinateConverter;
 
-        MeshCreater meshCreater = new MeshCreater(coordinateConverter, _baseShip, _baseSection, _baseHardpoint, null, _paletteMappers[recordType]);
+        MeshCreator meshCreater = new MeshCreator(coordinateConverter, _baseShip, _baseSection, _baseHardpoint, null, _paletteMappers[recordType]);
 
         sections = FilterSections(recordType, recordName, sections);
 

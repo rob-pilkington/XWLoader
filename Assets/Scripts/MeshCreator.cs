@@ -7,7 +7,7 @@ using Assets.Scripts.Palette;
 
 namespace Assets.Scripts
 {
-    public class MeshCreater
+    public class MeshCreator
     {
         private readonly GameObject _baseObject;
         private readonly GameObject _baseSection;
@@ -28,7 +28,7 @@ namespace Assets.Scripts
             public readonly Vector3 Center;
         }
 
-        public MeshCreater(CoordinateConverter coordinateConverter, GameObject baseObject, GameObject baseSection, GameObject baseHardpoint, Transform transform, IPaletteMapper paletteMapper)
+        public MeshCreator(CoordinateConverter coordinateConverter, GameObject baseObject, GameObject baseSection, GameObject baseHardpoint, Transform transform, IPaletteMapper paletteMapper)
         {
             _coordinateConverter = coordinateConverter;
             _baseObject = baseObject;

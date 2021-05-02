@@ -125,8 +125,8 @@ public class ModelLoader : MonoBehaviour
             ["CPLX"] = cplxFiles
         };
 
-        var xwingPaletteMapper = new XWingPaletteMapper(PaletteMapper.LoadPalette(xwPaletteFileName), _customFlightGroupColors.ToArray());
-        var tieFighterPaletteMapper = new TieFighterPaletteMapper(PaletteMapper.LoadPalette(tiePaletteFileName), _customFlightGroupColors.ToArray());
+        var xwingPaletteMapper = !string.IsNullOrWhiteSpace(xwPaletteFileName) ? new XWingPaletteMapper(PaletteMapper.LoadPalette(xwPaletteFileName), _customFlightGroupColors.ToArray()) : null;
+        var tieFighterPaletteMapper = !string.IsNullOrWhiteSpace(tiePaletteFileName) ? new TieFighterPaletteMapper(PaletteMapper.LoadPalette(tiePaletteFileName), _customFlightGroupColors.ToArray()) : null;
 
         _paletteMappers = new Dictionary<string, IPaletteMapper>
         {
@@ -151,8 +151,8 @@ public class ModelLoader : MonoBehaviour
             ["SHIP"] = tieFighterMaterialPropertyBlock
         };
 
-        SetupMaterialPropertyBlock(xwingMaterialPropertyBlock, xwingPaletteMapper);
-        SetupMaterialPropertyBlock(tieFighterMaterialPropertyBlock, tieFighterPaletteMapper);
+        if (xwingPaletteMapper != null) SetupMaterialPropertyBlock(xwingMaterialPropertyBlock, xwingPaletteMapper);
+        if (tieFighterPaletteMapper != null) SetupMaterialPropertyBlock(tieFighterMaterialPropertyBlock, tieFighterPaletteMapper);
 
         _shipRecords = new List<LoadedModel>();
 

@@ -9,7 +9,7 @@ Translation:
 * Space/Left Control: move up/down
 
 Rotation:
-* Q/R: rotate left/right
+* Q/E: rotate left/right
 * Down/Up arrows: rotate up/down
 
 Navigate models:

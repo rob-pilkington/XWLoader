@@ -12,50 +12,36 @@ namespace Assets.Scripts.LfdReader
 
         public void Read(FileStream fs, bool hasWrongEndianLineRadius)
         {
-            using (var reader = new BinaryReader(fs))
+            using var reader = new BinaryReader(fs);
+
+            var map = new RmapRecord();
+            map.ReadLfdRecord(reader);
+
+            foreach (var entry in map.Entries)
             {
-                var map = new RmapRecord();
-
-                map.ReadLfdRecord(reader);
-
-                foreach (var entry in map.Entries)
+                LfdRecord record = entry.Type switch
                 {
-                    LfdRecord record;
-                    switch (entry.Type)
-                    {
-                        case "CRFT":
-                            record = new CrftRecord();
-                            break;
+                    "CRFT" => new CrftRecord(),
+                    "CPLX" => new CplxRecord(hasWrongEndianLineRadius),
+                    "SHIP" => new ShipRecord(),
 
-                        case "CPLX":
-                            record = new CplxRecord(hasWrongEndianLineRadius);
-                            break;
+                    "BTMP" => new BmapRecord(),
+                    "BMAP" => new BmapRecord(),
+                    "XACT" => new BmapRecord(),
 
-                        case "SHIP":
-                            record = new ShipRecord();
-                            break;
+                    _ => throw new NotSupportedException("Unknown record type: " + entry.Type)
+                };
 
-                        case "BTMP":
-                        case "BMAP":
-                        case "XACT":
-                            record = new BmapRecord();
-                            break;
+                Debug.Log($"Reading {entry.Type} {entry.Name}");
+                record.ReadLfdRecord(reader);
 
-                        default:
-                            throw new NotSupportedException("Unknown record type: " + entry.Type);
-                    }
-
-                    Debug.Log($"Reading {entry.Type} {entry.Name}");
-                    record.ReadLfdRecord(reader);
-
-                    try
-                    {
-                        Records.Add(entry.Name, record);
-                    }
-                    catch (ArgumentException)
-                    {
-                        // Yeah, just ignore for now
-                    }
+                try
+                {
+                    Records.Add(entry.Name, record);
+                }
+                catch (ArgumentException)
+                {
+                    // Yeah, just ignore for now
                 }
             }
         }
@@ -208,12 +194,12 @@ namespace Assets.Scripts.LfdReader
                 var thisPosition = sectionPositions[i];
                 var next = i + 1;
                 var byteCount = (next < SectionCount ? sectionPositions[next] : remainingData.Length) - thisPosition;
-                using (var stream = new MemoryStream(remainingData, thisPosition, byteCount))
-                using (var subreader = new BinaryReader(stream))
-                {
-                    Sections[i] = new SectionRecord();
-                    Sections[i].Read(subreader, byteCount, false, false);
-                }
+
+                using var stream = new MemoryStream(remainingData, thisPosition, byteCount);
+                using var subreader = new BinaryReader(stream);
+
+                Sections[i] = new SectionRecord();
+                Sections[i].Read(subreader, byteCount, false, false);
             }
 
             UnknownData = new byte[0]; // I thought I had something here before, but the previous code was hardcoded to read 0 bytes
@@ -278,43 +264,42 @@ namespace Assets.Scripts.LfdReader
             RecordLength = expectedLength;
             var isLittleEndian = readLength == expectedLength;
 
-            using (var reader = BinaryReaderFactory.Instantiate(isLittleEndian, inputReader.BaseStream, leaveOpen: true))
+            using var reader = BinaryReaderFactory.Instantiate(isLittleEndian, inputReader.BaseStream, leaveOpen: true);
+
+            SectionCount = reader.ReadByte();
+            ShadingRecordCount = reader.ReadByte();
+
+            for (var i = 0; i < ShadingRecordCount; i++)
+                ShadingData.Add(reader.ReadBytes(16));
+
+            var bytesRead = reader.BaseStream.Position - startPosition;
+            var remainingData = reader.ReadBytes((int)(DataLength - bytesRead));
+
+            SectionPositions = new SortedList<int, short>();
+            for (var i = 0; i < SectionCount; i++)
             {
-                SectionCount = reader.ReadByte();
-                ShadingRecordCount = reader.ReadByte();
-
-                for (var i = 0; i < ShadingRecordCount; i++)
-                    ShadingData.Add(reader.ReadBytes(16));
-
-                var bytesRead = reader.BaseStream.Position - startPosition;
-                var remainingData = reader.ReadBytes((int)(DataLength - bytesRead));
-
-                SectionPositions = new SortedList<int, short>();
-                for (var i = 0; i < SectionCount; i++)
-                {
-                    var bytes = (new byte[2] { remainingData[i * 2], remainingData[i * 2 + 1] }).InEndianOrder(isLittleEndian);
-                    SectionPositions.Add(i, (short)(BitConverter.ToInt16(bytes, 0) + i * 2));
-                }
-
-                Sections = new SectionRecord[SectionCount];
-
-                // For the purpose of analysis, I need to know how many bytes could remain
-                var sectionPositions = SectionPositions.Values.OrderBy(x => x).ToList();
-                for (var i = 0; i < SectionCount; i++)
-                {
-                    var thisPosition = sectionPositions[i];
-                    var next = i + 1;
-                    var byteCount = (next < SectionCount ? sectionPositions[next] : remainingData.Length) - thisPosition;
-                    using (var stream = new MemoryStream(remainingData, thisPosition, byteCount))
-                    using (var subreader = BinaryReaderFactory.Instantiate(isLittleEndian, stream))
-                    {
-                        Sections[i] = new SectionRecord();
-                        Sections[i].Read(subreader, byteCount, true, _hasWrongEndianLineRadius);
-                    }
-                }
-
-                UnknownData = new byte[0]; // I thought I had something here before, but the previous code was hardcoded to read 0 bytes
+                var bytes = (new byte[2] { remainingData[i * 2], remainingData[i * 2 + 1] }).InEndianOrder(isLittleEndian);
+                SectionPositions.Add(i, (short)(BitConverter.ToInt16(bytes, 0) + i * 2));
             }
+
+            Sections = new SectionRecord[SectionCount];
+
+            // For the purpose of analysis, I need to know how many bytes could remain
+            var sectionPositions = SectionPositions.Values.OrderBy(x => x).ToList();
+            for (var i = 0; i < SectionCount; i++)
+            {
+                var thisPosition = sectionPositions[i];
+                var next = i + 1;
+                var byteCount = (next < SectionCount ? sectionPositions[next] : remainingData.Length) - thisPosition;
+
+                using var stream = new MemoryStream(remainingData, thisPosition, byteCount);
+                using var subreader = BinaryReaderFactory.Instantiate(isLittleEndian, stream);
+
+                Sections[i] = new SectionRecord();
+                Sections[i].Read(subreader, byteCount, true, _hasWrongEndianLineRadius);
+            }
+
+            UnknownData = new byte[0]; // I thought I had something here before, but the previous code was hardcoded to read 0 bytes
         }
     }
 
@@ -364,98 +349,97 @@ namespace Assets.Scripts.LfdReader
             RecordLength = expectedLength;
             var isLittleEndian = readLength == expectedLength;
 
-            using (var reader = BinaryReaderFactory.Instantiate(isLittleEndian, inputReader.BaseStream, leaveOpen: true))
+            using var reader = BinaryReaderFactory.Instantiate(isLittleEndian, inputReader.BaseStream, leaveOpen: true);
+
+            MainHeaderData = reader.ReadBytes(30);
+
+            SectionCount = reader.ReadByte();
+            ShadingSetCount = reader.ReadByte();
+
+            UnknownHeaderData = reader.ReadBytes(2);
+
+            var shadingOffsets = new List<long>(ShadingSetCount);
+            var shadingDistances = new List<int>(ShadingSetCount);
+            for (var i = 0; i < ShadingSetCount; i++)
             {
-                MainHeaderData = reader.ReadBytes(30);
+                var currentPosition = reader.BaseStream.Position;
+                shadingOffsets.Add(reader.ReadInt16() + currentPosition);
+                shadingDistances.Add(reader.ReadInt32());
+            }
 
-                SectionCount = reader.ReadByte();
-                ShadingSetCount = reader.ReadByte();
+            var extendedSectionInfoStartPosition = new long[SectionCount];
+            var extendedSectionInfoSectionType = new short[SectionCount];
+            var extendedSectionInfoUnknown1 = new byte[SectionCount][];
+            var extendedSectionInfoHardpointCount = new byte[SectionCount];
+            var extendedSectionInfoSectionOffset = new short[SectionCount];
+            var extendedSectionInfoHardpointOffset = new short[SectionCount];
+            var extendedSectionInfoUnknown2 = new byte[SectionCount][];
+            for (var i = 0; i < SectionCount; i++)
+            {
+                extendedSectionInfoStartPosition[i] = reader.BaseStream.Position;
+                extendedSectionInfoSectionType[i] = reader.ReadInt16();
+                extendedSectionInfoUnknown1[i] = reader.ReadBytes(41);
+                extendedSectionInfoHardpointCount[i] = reader.ReadByte();
+                extendedSectionInfoSectionOffset[i] = reader.ReadInt16();
+                extendedSectionInfoHardpointOffset[i] = reader.ReadInt16();
+                extendedSectionInfoUnknown2[i] = reader.ReadBytes(16);
+            }
 
-                UnknownHeaderData = reader.ReadBytes(2);
+            SectionHardpoints = new HardpointRecord[SectionCount][];
+            for (var i = 0; i < SectionCount; i++)
+            {
+                var hardpointCount = extendedSectionInfoHardpointCount[i];
+                SectionHardpoints[i] = new HardpointRecord[hardpointCount];
 
-                var shadingOffsets = new List<long>(ShadingSetCount);
-                var shadingDistances = new List<int>(ShadingSetCount);
-                for (var i = 0; i < ShadingSetCount; i++)
+                if (hardpointCount == 0)
+                    continue;
+
+                var expectedPosition = extendedSectionInfoStartPosition[i] + extendedSectionInfoHardpointOffset[i];
+                if (reader.BaseStream.Position != expectedPosition)
+                    throw new Exception($"{reader.BaseStream.Position} doesn't match expected position {expectedPosition}."); // didn't happen with TIE95
+
+                for (var j = 0; j < hardpointCount; j++)
                 {
-                    var currentPosition = reader.BaseStream.Position;
-                    shadingOffsets.Add(reader.ReadInt16() + currentPosition);
-                    shadingDistances.Add(reader.ReadInt32());
-                }
-
-                var extendedSectionInfoStartPosition = new long[SectionCount];
-                var extendedSectionInfoSectionType = new short[SectionCount];
-                var extendedSectionInfoUnknown1 = new byte[SectionCount][];
-                var extendedSectionInfoHardpointCount = new byte[SectionCount];
-                var extendedSectionInfoSectionOffset = new short[SectionCount];
-                var extendedSectionInfoHardpointOffset = new short[SectionCount];
-                var extendedSectionInfoUnknown2 = new byte[SectionCount][];
-                for (var i = 0; i < SectionCount; i++)
-                {
-                    extendedSectionInfoStartPosition[i] = reader.BaseStream.Position;
-                    extendedSectionInfoSectionType[i] = reader.ReadInt16();
-                    extendedSectionInfoUnknown1[i] = reader.ReadBytes(41);
-                    extendedSectionInfoHardpointCount[i] = reader.ReadByte();
-                    extendedSectionInfoSectionOffset[i] = reader.ReadInt16();
-                    extendedSectionInfoHardpointOffset[i] = reader.ReadInt16();
-                    extendedSectionInfoUnknown2[i] = reader.ReadBytes(16);
-                }
-
-                SectionHardpoints = new HardpointRecord[SectionCount][];
-                for (var i = 0; i < SectionCount; i++)
-                {
-                    var hardpointCount = extendedSectionInfoHardpointCount[i];
-                    SectionHardpoints[i] = new HardpointRecord[hardpointCount];
-
-                    if (hardpointCount == 0)
-                        continue;
-
-                    var expectedPosition = extendedSectionInfoStartPosition[i] + extendedSectionInfoHardpointOffset[i];
-                    if (reader.BaseStream.Position != expectedPosition)
-                        throw new Exception($"{reader.BaseStream.Position} doesn't match expected position {expectedPosition}."); // didn't happen with TIE95
-
-                    for (var j = 0; j < hardpointCount; j++)
-                    {
-                        var hardpoint = new HardpointRecord();
-                        hardpoint.Read(reader);
-                        SectionHardpoints[i][j] = hardpoint;
-                    }
-                }
-
-                UnknownData = reader.ReadBytes((int)(shadingOffsets.Min() - reader.BaseStream.Position));
-
-                for (var i = 0; i < ShadingSetCount; i++)
-                {
-                    var data = reader.ReadBytes(2);
-
-                    ShadingData.Add(data);
-
-                    var shadingRecordCount = data[1];
-
-                    for (var j = 0; j < shadingRecordCount; j++)
-                        ShadingData.Add(reader.ReadBytes(16));
-                }
-
-                var bytesRead = reader.BaseStream.Position - startPosition;
-                var remainingData = reader.ReadBytes((int)(DataLength - bytesRead));
-
-                Sections = new SectionRecord[SectionCount];
-
-                // For the purpose of analysis, I need to know how many bytes could remain
-                for (var i = 0; i < SectionCount; i++)
-                {
-                    var thisPosition = GetPosition(i);
-                    var next = i + 1;
-                    var byteCount = (next < SectionCount ? GetPosition(next) : remainingData.Length) - thisPosition;
-                    using (var stream = new MemoryStream(remainingData, thisPosition, byteCount))
-                    using (var subreader = BinaryReaderFactory.Instantiate(isLittleEndian, stream))
-                    {
-                        Sections[i] = new SectionRecord();
-                        Sections[i].Read(subreader, byteCount, true, false);
-                    }
-
-                    int GetPosition(int index) => (int)(extendedSectionInfoStartPosition[index] - bytesRead + extendedSectionInfoSectionOffset[index] - startPosition);
+                    var hardpoint = new HardpointRecord();
+                    hardpoint.Read(reader);
+                    SectionHardpoints[i][j] = hardpoint;
                 }
             }
+
+            UnknownData = reader.ReadBytes((int)(shadingOffsets.Min() - reader.BaseStream.Position));
+
+            for (var i = 0; i < ShadingSetCount; i++)
+            {
+                var data = reader.ReadBytes(2);
+
+                ShadingData.Add(data);
+
+                var shadingRecordCount = data[1];
+
+                for (var j = 0; j < shadingRecordCount; j++)
+                    ShadingData.Add(reader.ReadBytes(16));
+            }
+
+            var bytesRead = reader.BaseStream.Position - startPosition;
+            var remainingData = reader.ReadBytes((int)(DataLength - bytesRead));
+
+            Sections = new SectionRecord[SectionCount];
+
+            // For the purpose of analysis, I need to know how many bytes could remain
+            for (var i = 0; i < SectionCount; i++)
+            {
+                var thisPosition = GetPosition(i);
+                var next = i + 1;
+                var byteCount = (next < SectionCount ? GetPosition(next) : remainingData.Length) - thisPosition;
+
+                using var stream = new MemoryStream(remainingData, thisPosition, byteCount);
+                using var subreader = BinaryReaderFactory.Instantiate(isLittleEndian, stream);
+
+                Sections[i] = new SectionRecord();
+                Sections[i].Read(subreader, byteCount, true, false);
+            }
+
+            int GetPosition(int index) => (int)(extendedSectionInfoStartPosition[index] - bytesRead + extendedSectionInfoSectionOffset[index] - startPosition);
         }
     }
 
@@ -867,11 +851,11 @@ namespace Assets.Scripts.LfdReader
             System.Text.Encoding encoding = null,
             bool leaveOpen = false)
         {
-            encoding = encoding ?? System.Text.Encoding.Default;
+            encoding ??= System.Text.Encoding.Default;
 
             return isLittleEndian
-                       ? new BinaryReader(stream, encoding, leaveOpen)
-                       : new BigEndianBinaryReader(stream, encoding, leaveOpen);
+                ? new BinaryReader(stream, encoding, leaveOpen)
+                : new BigEndianBinaryReader(stream, encoding, leaveOpen);
         }
     }
 

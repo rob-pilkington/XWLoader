@@ -194,16 +194,13 @@ public class ModelLoader : MonoBehaviour
                     }
                 }
 
-                LfdRecord GetRecordReader(string type)
+                LfdRecord GetRecordReader(string type) => type switch
                 {
-                    switch (type)
-                    {
-                        case "CRFT": return new CrftRecord();
-                        case "CPLX": return new CplxRecord(fileToLoad.HasWrongEndianLineRadius);
-                        case "SHIP": return new ShipRecord();
-                        default: throw new NotSupportedException($"Unknown file type: {type}");
-                    }
-                }
+                    "CRFT" => new CrftRecord(),
+                    "CPLX" => new CplxRecord(fileToLoad.HasWrongEndianLineRadius),
+                    "SHIP" => new ShipRecord(),
+                    _ => throw new NotSupportedException($"Unknown file type: {type}"),
+                };
             }
         }
 

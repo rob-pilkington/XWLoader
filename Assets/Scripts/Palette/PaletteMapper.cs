@@ -126,10 +126,8 @@ namespace Assets.Scripts.Palette
 
         public static List<Color> LoadPalette(string filename)
         {
-            using (var fs = File.OpenRead(filename))
-            {
-                return LoadPalette(fs);
-            }
+            using var fs = File.OpenRead(filename);
+            return LoadPalette(fs);
         }
 
         public static List<Color> LoadPalette(Stream fs)

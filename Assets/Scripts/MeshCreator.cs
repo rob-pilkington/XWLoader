@@ -515,270 +515,6 @@ namespace Assets.Scripts
             return markPatches;
         }
 
-        private void SetMarkingsOnMesh(IEnumerable<MarkRecord> markRecords, int? flightGroupColor, Vector3[] originalVertices, List<Vector3> vertices, List<int> markTriangles, List<Vector3> normals, List<Vector2> uv, Vector3[] sectionNormals, Vector3 normal, PolygonLineRecord polygon)
-        {
-            // TODO: terrible; fix
-            var markOffset = 0.00f;
-            foreach (var markRecord in markRecords)
-            {
-                markOffset += 0.02f;
-
-                var dataIndices = 0;
-                if (markRecord.MarkType >= 3 && markRecord.MarkType <= 9)
-                    dataIndices = markRecord.MarkType;
-                else if (markRecord.MarkType >= 0x11 && markRecord.MarkType <= 0xfe)
-                    dataIndices = 2;
-
-                if (dataIndices == 0)
-                    continue;
-
-                var markVertices = new List<Vector3>();
-                var markOrigTri = new List<int[]>();    // The indices of the original triangles the mark point came from
-                for (var dataIndex = 0; dataIndex < dataIndices * 3; dataIndex += 3)
-                {
-                    var index = (markRecord.Data[dataIndex] / 2 - 1) % polygon.VertexIndices.Length;
-
-                    if (index < 0)
-                        index += polygon.VertexIndices.Length;
-
-                    var referenceVertex = originalVertices[polygon.VertexIndices[index]];
-
-                    var leftVertexIndex = index - 1;
-                    if (leftVertexIndex < 0)
-                        leftVertexIndex += polygon.VertexIndices.Length;
-
-                    var rightVertexIndex = index + 1;
-                    if (rightVertexIndex >= polygon.VertexIndices.Length)
-                        rightVertexIndex -= polygon.VertexIndices.Length;
-
-                    var leftVertex = originalVertices[polygon.VertexIndices[leftVertexIndex]];
-                    var rightVertex = originalVertices[polygon.VertexIndices[rightVertexIndex]];
-
-                    var leftFactor = markRecord.Data[dataIndex + 1];
-                    var rightFactor = markRecord.Data[dataIndex + 2];
-
-                    var vertex = referenceVertex + ((leftVertex - referenceVertex) * leftFactor + (rightVertex - referenceVertex) * rightFactor) / 32f;
-
-                    vertex += normal * markOffset;
-
-                    markVertices.Add(vertex);
-                    int[] OrigIndices = { polygon.VertexIndices[index], polygon.VertexIndices[leftVertexIndex], polygon.VertexIndices[rightVertexIndex] };
-                    markOrigTri.Add(OrigIndices);
-                }
-
-                Vector3[] CalculateMarkingNormals(List<Vector3> verticesToUse, List<int[]> verticesSurround)
-                {
-                    if (sectionNormals.Length == 0 || !polygon.ShadeFlag)
-                        return new Vector3[0];
-
-                    var markNormals = new List<Vector3>();
-
-                    for (int i = 0; i < verticesToUse.Count; i++)
-                    {
-                        var vertex = verticesToUse[i];
-                        var origTri = markOrigTri[i];
-
-                        var markNormal = Vector3.zero;
-
-                        //markNormal = AzrapseNormalInterpolation(originalVertices, sectionNormals, polygon, vertex, markNormal);
-                        //markNormal = RobNormalInterpolation(originalVertices, sectionNormals, polygon, vertex, markNormal);
-                        markNormal = LardoNormalInterpolation(originalVertices, sectionNormals, polygon, vertex, markNormal, origTri);
-
-                        markNormal.Normalize();
-
-                        markNormals.Add(markNormal);
-                    }
-
-                    return markNormals.ToArray();
-                }
-
-                var markColorInfo = _paletteMapper.GetColorInfo(markRecord.MarkColor, flightGroupColor);
-
-                if (dataIndices == 2)
-                {
-                    // Need to generate our own vertices for lines
-                    var scaleFactor = markRecord.MarkType * _coordinateConverter.ScaleFactor / 2;
-
-                    // TODO: modify the corners based on additional data in the record (once deciphered)
-                    var lineVertices = new List<Vector3>
-                    {
-                        markVertices[0] + Quaternion.LookRotation(markVertices[1] - markVertices[0], normal) * Vector3.left * scaleFactor,
-                        markVertices[0] + Quaternion.LookRotation(markVertices[1] - markVertices[0], normal) * Vector3.right * scaleFactor,
-                        markVertices[1] + Quaternion.LookRotation(markVertices[0] - markVertices[1], normal) * Vector3.left * scaleFactor,
-                        markVertices[1] + Quaternion.LookRotation(markVertices[0] - markVertices[1], normal) * Vector3.right * scaleFactor
-                    };
-
-                    // We have two points for the normals, work with what we have
-                    List<Vector3> lineNormals = CalculateMarkingNormals(markVertices, markOrigTri).ToList();
-
-                    lineNormals.Insert(0, lineNormals[0]);
-                    lineNormals.Insert(2, lineNormals[2]);
-
-                    CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, lineVertices, lineNormals.ToArray(), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
-                }
-                else
-                {
-                    if (HasIntersectionPoint(out var intersectionPoint, out var splitPoint1, out var splitPoint2))
-                    {
-                        // If the polygon intersects with itself, we need to split it into two separate polygons.
-                        Debug.Log($"Model has intersection point between vertices {splitPoint1} and {splitPoint2} of {markVertices.Count}.");
-
-                        var vertexRange1 = markVertices.Take(splitPoint1).ToList();
-                        var vertexRange2 = markVertices.Skip(splitPoint1).Take(splitPoint2 - splitPoint1).ToList();
-
-                        // Hack for the new normal code:
-                        // This assumes that the intersecting lines won't deviate from the parent tri normals too much. Hacky.
-                        var markOrigTriRange1 = markOrigTri.Take(splitPoint1).ToList();
-                        var markOrigTriRange2 = markOrigTri.Take(splitPoint1).ToList();
-
-                        vertexRange1.Add(intersectionPoint);
-                        vertexRange1.AddRange(markVertices.Skip(splitPoint2));
-
-                        vertexRange2.Insert(0, intersectionPoint);
-
-
-                        // First polygon
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange1, CalculateMarkingNormals(vertexRange1, markOrigTriRange1), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
-
-                        // Second polygon 
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, vertexRange2, CalculateMarkingNormals(vertexRange2, markOrigTriRange2), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
-                    }
-                    else
-                    {
-                        CopyVerticesForMarking(polygon.TwoSidedFlag, markOffset, markVertices, CalculateMarkingNormals(markVertices, markOrigTri), polygon.ShadeFlag, markColorInfo, normal, vertices, markTriangles, normals, uv);
-                    }
-
-                    bool HasIntersectionPoint(out Vector3 intersection, out int firstSplit, out int secondSplit)
-                    {
-                        // TODO: this needs to be cleaned up
-                        var projection = Get2dProjection(normal, markVertices.ToArray()).ToList();
-                        for (var i = 0; i < projection.Count; i++)
-                        {
-                            var point1Start = projection[i];
-                            var point1End = GetEndPoint2d(i);
-
-                            // Skip the adjacent vertex because it won't intersect.
-                            for (var j = i + 2; j < projection.Count; j++)
-                            {
-                                // Don't test the first and last together since they will be adjacent.
-                                if (i == 0 && j == projection.Count - 1)
-                                    continue;
-
-                                var point2Start = projection[j];
-                                var point2End = GetEndPoint2d(j);
-
-                                if (AreLineSegmentsCrossing(point1Start, point1End, point2Start, point2End))
-                                {
-                                    var point1Start3 = markVertices[i];
-                                    var point1End3 = GetEndPoint3d(i);
-                                    var vector1 = point1End3 - point1Start3;
-
-                                    var point2Start3 = markVertices[j];
-                                    var point2End3 = GetEndPoint3d(j);
-                                    var vector2 = point2End3 - point2Start3;
-
-                                    firstSplit = i + 1;
-                                    secondSplit = j + 1;
-
-                                    if (ClosestPointsOnTwoLines(out var closestPoint1, out var closestPoint2, point1Start3, vector1, point2Start3, vector2))
-                                    {
-                                        intersection = (closestPoint1 + closestPoint2) / 2;
-                                        return true;
-                                    }
-                                }
-                            }
-                        }
-
-                        intersection = Vector3.zero;
-                        firstSplit = 0;
-                        secondSplit = 0;
-                        return false;
-
-                        Vector2 GetEndPoint2d(int currentIndex) => projection[(currentIndex + 1) % projection.Count];
-                        Vector3 GetEndPoint3d(int currentIndex) => markVertices[(currentIndex + 1) % markVertices.Count];
-                    }
-                }
-            }
-        }
-
-        private static Vector3 AzrapseNormalInterpolation(Vector3[] originalVertices, Vector3[] sectionNormals, PolygonLineRecord polygon, Vector3 vertex, Vector3 markNormal)
-        {
-            var totalDistance = 0f;
-            var polygonVertexCount = polygon.VertexIndices.Length;
-            for (int i = 0; i < polygonVertexCount; i++)
-            {
-                var otherVertexIndex = polygon.VertexIndices[i];
-                var distance = Vector3.Distance(vertex, originalVertices[otherVertexIndex]);
-                totalDistance += distance;
-            }
-            for (int i = 0; i < polygonVertexCount; i++)
-            {
-                var otherVertexIndex = polygon.VertexIndices[i];
-                var distance = Vector3.Distance(vertex, originalVertices[otherVertexIndex]);
-                var weight = 1 - distance / totalDistance;
-                markNormal += weight * sectionNormals[otherVertexIndex];
-            }
-            markNormal /= polygonVertexCount;
-            return markNormal;
-        }
-
-        private static Vector3 RobNormalInterpolation(Vector3[] originalVertices, Vector3[] sectionNormals, PolygonLineRecord polygon, Vector3 vertex, Vector3 markNormal)
-        {
-            foreach (var otherVertexIndex in polygon.VertexIndices)
-                markNormal += sectionNormals[otherVertexIndex] / Vector3.Distance(originalVertices[otherVertexIndex], vertex);
-            return markNormal;
-        }
-
-        private static Vector3 LardoNormalInterpolation(Vector3[] originalVertices, Vector3[] sectionNormals, PolygonLineRecord polygon, Vector3 vertex, Vector3 markNormal, int[] verticesSurround)
-        {
-
-            // Get the barycentric coordinates of this point
-            Vector3 a = originalVertices[verticesSurround[0]];
-            Vector3 b = originalVertices[verticesSurround[1]];
-            Vector3 c = originalVertices[verticesSurround[2]];
-
-            // Firstly flatten down this point back to the face plane
-            Plane FacePlane = new Plane(a, b, c);
-
-            float Offset = FacePlane.GetDistanceToPoint(vertex);
-
-            vertex -= FacePlane.normal * Offset;    // Reverse the offset added earlier for the overlay hack
-
-            Vector3 n0 = sectionNormals[verticesSurround[0]];
-            Vector3 n1 = sectionNormals[verticesSurround[1]];
-            Vector3 n2 = sectionNormals[verticesSurround[2]];
-
-            Vector3 v0 = b - a, v1 = c - a, v2 = vertex - a;
-
-            float d00 = Vector3.Dot(v0, v0);
-            float d01 = Vector3.Dot(v0, v1);
-            float d11 = Vector3.Dot(v1, v1);
-            float d20 = Vector3.Dot(v2, v0);
-            float d21 = Vector3.Dot(v2, v1);
-            float denom = d00 * d11 - d01 * d01;
-            float v = (d11 * d20 - d01 * d21) / denom,
-                w = (d00 * d21 - d01 * d20) / denom,
-                u = 1f - v - w;
-
-            // Clamp the values. Introduces some slight error for line markings which overshoot but we normalize at the end anyway
-            if (u < 0f)
-                u = 0f;
-            if (u > 1f)
-                u = 1f;
-            if (v < 0f)
-                v = 0f;
-            if (v > 1f)
-                v = 1f;
-            if (w < 0f)
-                w = 0f;
-            if (w > 1f)
-                w = 1f;
-
-            markNormal = new Vector3(n0.x * u + n1.x * v + n2.x * w, n0.y * u + n1.y * v + n2.y * w, n0.z * u + n1.z * v + n2.z * w);
-
-            return markNormal;
-        }
-
         private static void NormalizeAndReorder(Vector3 normal, List<Vector3> vertices, List<Vector3> vertexNormals = null)
         {
             if (Vector3.Angle(normal, CalculateNormal(vertices)) > 91) // uhh, wrong direction, so flip it
@@ -799,7 +535,7 @@ namespace Assets.Scripts
                 if (nextIndex >= vertices.Count)
                     nextIndex = 0;
 
-                normal = normal + Vector3.Cross(vertices[i], vertices[nextIndex]);
+                normal += Vector3.Cross(vertices[i], vertices[nextIndex]);
             }
 
             return normal.normalized;
@@ -951,43 +687,6 @@ namespace Assets.Scripts
             Vector2 Project(Vector3 point) => new Vector2(Vector3.Dot(point, u), Vector3.Dot(point, v));
         }
 
-        #region 2D line interesction stuff
-
-        ///// <summary>
-        ///// Line segment-line segment intersection in 2d space by using the dot product
-        ///// p1 and p2 belongs to line 1, and p3 and p4 belongs to line 2 
-        ///// </summary>
-        ///// <remarks>
-        ///// Modified from https://www.habrador.com/tutorials/math/5-line-line-intersection/
-        ///// Says this is for 2D space but accepts 3d vectors. Not sure if that's a typo or what.
-        ///// </remarks>
-        //public static bool AreLineSegmentsIntersectingDotProduct(Vector3 p1, Vector3 p2, Vector3 p3, Vector3 p4)
-        //    => IsPointsOnDifferentSides(p1, p2, p3, p4) && IsPointsOnDifferentSides(p3, p4, p1, p2);
-        //
-        ///// <summary>
-        ///// Are the points on different sides of a line?
-        ///// </summary>
-        ///// <remarks>
-        ///// Slightly modified from https://www.habrador.com/tutorials/math/5-line-line-intersection/
-        ///// </remarks>
-        //private static bool IsPointsOnDifferentSides(Vector3 p1, Vector3 p2, Vector3 p3, Vector3 p4)
-        //{
-        //    // The direction of the line
-        //    var lineDir = p2 - p1;
-        //
-        //    // The normal to a line is just flipping x and z and making z negative
-        //    var lineNormal = new Vector3(-lineDir.z, lineDir.y, lineDir.x);
-        //
-        //    // Now we need to take the dot product between the normal and the points on the other line
-        //    var dot1 = Vector3.Dot(lineNormal, p3 - p1);
-        //    var dot2 = Vector3.Dot(lineNormal, p4 - p1);
-        //
-        //    // If you multiply them and get a negative value then p3 and p4 are on different sides of the line
-        //    return dot1 * dot2 < 0f;
-        //}
-
-        #endregion
-
         #region 3D line interesction stuff
         /// <remarks>
         /// Slightly modified from http://wiki.unity3d.com/index.php/3d_Math_functions
@@ -1038,18 +737,15 @@ namespace Assets.Scripts
             //point is on side of linePoint2, compared to linePoint1
             if (dot > 0)
             {
-
                 //point is on the line segment
                 if (pointVec.magnitude <= lineVec.magnitude)
                 {
-
                     return 0;
                 }
 
                 //point is not on the line segment and it is on the side of linePoint2
                 else
                 {
-
                     return 2;
                 }
             }
@@ -1058,7 +754,6 @@ namespace Assets.Scripts
             //Point is not on the line segment and it is on the side of linePoint1.
             else
             {
-
                 return 1;
             }
         }

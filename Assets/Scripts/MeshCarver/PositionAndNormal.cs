@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Collections.Generic;
 
 namespace PolygonCutter
 {
@@ -50,6 +46,22 @@ namespace PolygonCutter
             }
 
             return result;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is PositionAndNormal normal &&
+                EqualityComparer<Vector3>.Default.Equals(Pos, normal.Pos) &&
+                EqualityComparer<Vector3>.Default.Equals(Normal, normal.Normal);
+        }
+
+        public override int GetHashCode()
+        {
+            // Auto-generated
+            int hashCode = -1072039933;
+            hashCode = hashCode * -1521134295 + EqualityComparer<Vector3>.Default.GetHashCode(Pos);
+            hashCode = hashCode * -1521134295 + EqualityComparer<Vector3>.Default.GetHashCode(Normal);
+            return hashCode;
         }
     }
 }

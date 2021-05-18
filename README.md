@@ -3,6 +3,14 @@ Loader for 3d models for some old space combat games
 
 ## Controls
 
+### Mouse
+
+* Button 1 (standard left click) + drag: rotate camera around center of rotation
+* Button 3 (mouse wheel button) + drag: translate camera (moves center of rotation)
+* Mouse wheel: zoom in/out
+
+### Keyboard
+
 Translation:
 * W/S: move forward/backward
 * A/D: move left/right

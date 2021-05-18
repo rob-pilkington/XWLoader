@@ -41,6 +41,8 @@ public class ModelLoader : MonoBehaviour
 
     [SerializeField] private Light _light = null;
 
+    private Vector3 _rotationOrigin = Vector3.zero;
+    private float _rotationOriginDistance;
     private bool _enableLightRotation = false;
 
     private string xwPaletteFileName;
@@ -62,6 +64,7 @@ public class ModelLoader : MonoBehaviour
     // Use this for initialization
     void Start()
     {
+        _rotationOriginDistance = Vector3.Distance(Camera.main.transform.position, _rotationOrigin);
         settingsPanel.SetActive(true);
         LoadSettings();
     }
@@ -219,7 +222,6 @@ public class ModelLoader : MonoBehaviour
         materialPropertyBlock.SetTexture("_EmissionMap", emissionTexture);
     }
 
-    // Update is called once per frame
     void Update()
     {
         if (Input.GetKey(KeyCode.Escape))
@@ -230,43 +232,79 @@ public class ModelLoader : MonoBehaviour
 
         var cameraTransform = Camera.main.transform;
 
-        var delta = 100 * Time.deltaTime;
+        var deltaTranslate = 100 * Time.deltaTime;
+        var deltaRotate = 50 * Time.deltaTime;
+
+        if (Input.GetMouseButton(0))
+        {
+            cameraTransform.RotateAround(_rotationOrigin, cameraTransform.up, Input.GetAxis("Mouse X") * 5);
+            cameraTransform.RotateAround(_rotationOrigin, cameraTransform.right, -Input.GetAxis("Mouse Y") * 5);
+        }
+        else if (Input.GetMouseButton(2))
+        {
+            TranslateCamera(Vector3.right * -Input.GetAxis("Mouse X"));
+            TranslateCamera(Vector3.up * -Input.GetAxis("Mouse Y"));
+        }
+
+        if (Input.mouseScrollDelta.y != 0)
+        {
+            if (_rotationOriginDistance >= 1 || Input.mouseScrollDelta.y < 0) // prevent moving closer than 1 unit from center
+            {
+                var amountToTravel = _rotationOriginDistance * 0.25f * Input.mouseScrollDelta.y;
+                cameraTransform.position = Vector3.MoveTowards(cameraTransform.position, _rotationOrigin, amountToTravel);
+                _rotationOriginDistance -= amountToTravel;
+            }
+        }
 
         if (Input.GetKey(KeyCode.W))
-            cameraTransform.Translate(Vector3.forward * delta);
+            TranslateCamera(Vector3.forward * deltaTranslate);
 
         if (Input.GetKey(KeyCode.S))
-            cameraTransform.Translate(Vector3.back * delta);
+            TranslateCamera(Vector3.back * deltaTranslate);
 
         if (Input.GetKey(KeyCode.D))
-            cameraTransform.Translate(Vector3.right * delta);
+            TranslateCamera(Vector3.right * deltaTranslate);
 
         if (Input.GetKey(KeyCode.A))
-            cameraTransform.Translate(Vector3.left * delta);
+            TranslateCamera(Vector3.left * deltaTranslate);
 
         if (Input.GetKey(KeyCode.LeftControl))
-            cameraTransform.Translate(Vector3.down * delta);
+            TranslateCamera(Vector3.down * deltaTranslate);
 
         if (Input.GetKey(KeyCode.Space))
-            cameraTransform.Translate(Vector3.up * delta);
+            TranslateCamera(Vector3.up * deltaTranslate);
 
         if (Input.GetKey(KeyCode.Q))
-            cameraTransform.Rotate(Vector3.forward, 50 * Time.deltaTime);
+            RotateCamera(Vector3.forward, deltaRotate);
 
         if (Input.GetKey(KeyCode.E))
-            cameraTransform.Rotate(Vector3.forward, -50 * Time.deltaTime);
+            RotateCamera(Vector3.forward, -deltaRotate);
 
         if (Input.GetKey(KeyCode.UpArrow))
-            cameraTransform.Rotate(Vector3.right, 50 * Time.deltaTime);
+            RotateCamera(Vector3.right, deltaRotate);
 
         if (Input.GetKey(KeyCode.DownArrow))
-            cameraTransform.Rotate(Vector3.right, -50 * Time.deltaTime);
+            RotateCamera(Vector3.right, -deltaRotate);
 
         if (Input.GetKey(KeyCode.LeftArrow))
-            cameraTransform.Rotate(Vector3.up, -50 * Time.deltaTime);
+            RotateCamera(Vector3.up, -deltaRotate);
 
         if (Input.GetKey(KeyCode.RightArrow))
-            cameraTransform.Rotate(Vector3.up, 50 * Time.deltaTime);
+            RotateCamera(Vector3.up, deltaRotate);
+
+        void TranslateCamera(Vector3 translation)
+        {
+            cameraTransform.Translate(translation);
+            RecalculateRotationOrigin();
+        }
+
+        void RotateCamera(Vector3 axis, float angle)
+        {
+            cameraTransform.Rotate(axis, angle);
+            RecalculateRotationOrigin();
+        }
+
+        void RecalculateRotationOrigin() =>_rotationOrigin = cameraTransform.position + cameraTransform.forward * _rotationOriginDistance;
 
         if (Input.GetKeyDown(KeyCode.PageUp))
         {

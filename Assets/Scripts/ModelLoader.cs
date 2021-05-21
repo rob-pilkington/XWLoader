@@ -20,37 +20,22 @@ public class ModelLoader : MonoBehaviour
     [SerializeField] private GameObject _baseSection = null;
     [SerializeField] private GameObject _baseHardpoint = null;
 
+    [SerializeField] private SettingsController _settingsController = null;
+
     private IDictionary<string, MaterialPropertyBlock> _materialPropertyBlocks;
     private IDictionary<string, IPaletteMapper> _paletteMappers;
 
     private GameObject _shipContainer;
-    private bool inSettingsMenu = true;
 
     [SerializeField] private Text _modelName = null;
     [SerializeField] private Text _modelSize = null;
     [SerializeField] private Text _modelSections = null;
-
-    [SerializeField] private GameObject settingsPanel = null;
-    [SerializeField] private InputField xwPalettePathInput = null;
-    [SerializeField] private InputField tiePalettePathInput = null;
-    [SerializeField] private InputField xWingCrftResourcePathInput = null;
-    [SerializeField] private InputField xWingCplxResourcePathInput = null;
-    [SerializeField] private InputField xWingCplxWindowsResourcePathInput = null;
-    [SerializeField] private InputField tieShipResourcePathInput = null;
-    [SerializeField] private Text settingsValidationText = null;
 
     [SerializeField] private Light _light = null;
 
     private Vector3 _rotationOrigin = Vector3.zero;
     private float _rotationOriginDistance;
     private bool _enableLightRotation = false;
-
-    private string xwPaletteFileName;
-    private string tiePaletteFileName;
-    private string xWingCrftResourcePath;
-    private string xWingCplxResourcePath;
-    private string xWingCplxWindowsResourcePath;
-    private string tieShipResourcePath;
 
     private const float BaseScaleFactor = 0.0244140625f;
 
@@ -61,64 +46,67 @@ public class ModelLoader : MonoBehaviour
         new Color32(40, 120, 52, 255) // green
     };
 
-    // Use this for initialization
-    void Start()
+    private void Start()
     {
         _rotationOriginDistance = Vector3.Distance(Camera.main.transform.position, _rotationOrigin);
-        settingsPanel.SetActive(true);
-        LoadSettings();
+        _settingsController.SettingsLoaded += SettingsController_SettingsLoaded;
+        _settingsController.LoadSettings();
     }
 
-    void LoadModels()
+    private void SettingsController_SettingsLoaded(object sender, EventArgs e) => LoadModels();
+
+    public void SettingsButtonOnClick() => _settingsController.ShowSettingsWindow();
+
+    private void LoadModels()
     {
         var lfdFiles = new List<FileToLoad>();
         var crftFiles = new List<FileToLoad>();
         var cplxFiles = new List<FileToLoad>();
 
-        if (!string.IsNullOrWhiteSpace(xWingCrftResourcePath))
+        if (!string.IsNullOrWhiteSpace(_settingsController.XWingCrftResourcePath))
         {
             const string Source = "X-Wing 93";
-            lfdFiles.Add(new FileToLoad(Source, Path.Combine(xWingCrftResourcePath, "SPECIES.LFD")));
-            crftFiles.Add(new FileToLoad(Source, Path.Combine(xWingCrftResourcePath, "BWING.CFT")));
+            lfdFiles.Add(new FileToLoad(Source, Path.Combine(_settingsController.XWingCrftResourcePath, "SPECIES.LFD")));
+            crftFiles.Add(new FileToLoad(Source, Path.Combine(_settingsController.XWingCrftResourcePath, "BWING.CFT")));
         }
 
-        if (!string.IsNullOrWhiteSpace(xWingCplxResourcePath))
+        if (!string.IsNullOrWhiteSpace(_settingsController.XWingCplxResourcePath))
         {
             const string Source = "X-Wing 94";
-            lfdFiles.Add(new FileToLoad(Source, Path.Combine(xWingCplxResourcePath, "SPECIES.LFD")));
-            cplxFiles.Add(new FileToLoad(Source, Path.Combine(xWingCplxResourcePath, "BWING.CFT")));
+            lfdFiles.Add(new FileToLoad(Source, Path.Combine(_settingsController.XWingCplxResourcePath, "SPECIES.LFD")));
+            cplxFiles.Add(new FileToLoad(Source, Path.Combine(_settingsController.XWingCplxResourcePath, "BWING.CFT")));
         }
 
-        if (!string.IsNullOrWhiteSpace(xWingCplxWindowsResourcePath))
+        if (!string.IsNullOrWhiteSpace(_settingsController.XWingCplxWindowsResourcePath))
         {
-            lfdFiles.Add(new FileToLoad("X-Wing 98", Path.Combine(xWingCplxWindowsResourcePath, "SPECIES.LFD"), hasWrongEndianLineRadius: true));
+            lfdFiles.Add(new FileToLoad("X-Wing 98", Path.Combine(_settingsController.XWingCplxWindowsResourcePath, "SPECIES.LFD"), hasWrongEndianLineRadius: true));
         }
 
         // Need more information
-        //if (!string.IsNullOrWhiteSpace(xWingCplxMacResourcePath))
+        //if (!string.IsNullOrWhiteSpace(_settingsController.XWingCplxMacResourcePath))
         //{
-        //    lfdFiles.Add(new FileToLoad("X-Wing Mac", Path.Combine(xWingCplxMacResourcePath, "SPECIES.LFD"), true));
+        //    lfdFiles.Add(new FileToLoad("X-Wing Mac", Path.Combine(_settingsController.XWingCplxMacResourcePath, "SPECIES.LFD"), true));
         //    // Is there a B-wing file?
         //}
 
-        if (!string.IsNullOrWhiteSpace(tieShipResourcePath))
+        if (!string.IsNullOrWhiteSpace(_settingsController.TieShipResourcePath))
         {
             // Note: there are also additional files in RES320/RES640 folders. There are also LFD.320 files that appear to be the same as the regular files in the GOG 98 release.
             // I haven't yet found any reason to use these files instead, despite some having different file sizes.
             // (I haven't yet noted any model changes; maybe different resolution bitmaps? More research needed.)
             const string Source = "TIE Fighter";
-            lfdFiles.Add(new FileToLoad(Source, Path.Combine(tieShipResourcePath, "SPECIES.LFD")));
-            lfdFiles.Add(new FileToLoad(Source, Path.Combine(tieShipResourcePath, "SPECIES2.LFD")));
-            lfdFiles.Add(new FileToLoad(Source, Path.Combine(tieShipResourcePath, "SPECIES3.LFD")));
+            lfdFiles.Add(new FileToLoad(Source, Path.Combine(_settingsController.TieShipResourcePath, "SPECIES.LFD")));
+            lfdFiles.Add(new FileToLoad(Source, Path.Combine(_settingsController.TieShipResourcePath, "SPECIES2.LFD")));
+            lfdFiles.Add(new FileToLoad(Source, Path.Combine(_settingsController.TieShipResourcePath, "SPECIES3.LFD")));
         }
 
         // Need more information
-        //if (!string.IsNullOrWhiteSpace(tieShipMacResourcePath))
+        //if (!string.IsNullOrWhiteSpace(_settingsController.TieShipMacResourcePath))
         //{
         //    const string Source = "TIE Fighter Mac";
-        //    lfdFiles.Add(new FileToLoad(source, Path.Combine(tieShipMacResourcePath, "SPECIES.LFD")));
-        //    lfdFiles.Add(new FileToLoad(source, Path.Combine(tieShipMacResourcePath, "SPECIES2.LFD")));
-        //    lfdFiles.Add(new FileToLoad(source, Path.Combine(tieShipMacResourcePath, "SPECIES3.LFD")));
+        //    lfdFiles.Add(new FileToLoad(source, Path.Combine(_settingsController.TieShipMacResourcePath, "SPECIES.LFD")));
+        //    lfdFiles.Add(new FileToLoad(source, Path.Combine(_settingsController.TieShipMacResourcePath, "SPECIES2.LFD")));
+        //    lfdFiles.Add(new FileToLoad(source, Path.Combine(_settingsController.TieShipMacResourcePath, "SPECIES3.LFD")));
         //}
 
         var fileGroups = new Dictionary<string, List<FileToLoad>>
@@ -128,8 +116,8 @@ public class ModelLoader : MonoBehaviour
             ["CPLX"] = cplxFiles
         };
 
-        var xwingPaletteMapper = !string.IsNullOrWhiteSpace(xwPaletteFileName) ? new XWingPaletteMapper(PaletteMapper.LoadPalette(xwPaletteFileName), _customFlightGroupColors.ToArray()) : null;
-        var tieFighterPaletteMapper = !string.IsNullOrWhiteSpace(tiePaletteFileName) ? new TieFighterPaletteMapper(PaletteMapper.LoadPalette(tiePaletteFileName), _customFlightGroupColors.ToArray()) : null;
+        var xwingPaletteMapper = !string.IsNullOrWhiteSpace(_settingsController.XwPaletteFileName) ? new XWingPaletteMapper(PaletteMapper.LoadPalette(_settingsController.XwPaletteFileName), _customFlightGroupColors.ToArray()) : null;
+        var tieFighterPaletteMapper = !string.IsNullOrWhiteSpace(_settingsController.TiePaletteFileName) ? new TieFighterPaletteMapper(PaletteMapper.LoadPalette(_settingsController.TiePaletteFileName), _customFlightGroupColors.ToArray()) : null;
 
         _paletteMappers = new Dictionary<string, IPaletteMapper>
         {
@@ -207,10 +195,11 @@ public class ModelLoader : MonoBehaviour
             }
         }
 
+        _currentRecord = 0;
         LoadShip();
     }
 
-    static void SetupMaterialPropertyBlock(MaterialPropertyBlock materialPropertyBlock, IPaletteMapper paletteMapper)
+    private static void SetupMaterialPropertyBlock(MaterialPropertyBlock materialPropertyBlock, IPaletteMapper paletteMapper)
     {
         var texture = paletteMapper.GeneratePaletteTexture();
         var specularTexture = paletteMapper.GenerateSpecularMap();
@@ -222,12 +211,12 @@ public class ModelLoader : MonoBehaviour
         materialPropertyBlock.SetTexture("_EmissionMap", emissionTexture);
     }
 
-    void Update()
+    private void Update()
     {
         if (Input.GetKey(KeyCode.Escape))
             Application.Quit();
 
-        if (inSettingsMenu) // everything after this is controls
+        if (_settingsController.InSettingsMenu) // everything after this is controls
             return;
 
         var cameraTransform = Camera.main.transform;
@@ -429,148 +418,7 @@ public class ModelLoader : MonoBehaviour
             _light.transform.Rotate(Vector3.up, 90 * Time.fixedDeltaTime, Space.World);
     }
 
-    public void SaveButtonOnClick()
-    {
-        xwPaletteFileName = xwPalettePathInput.text;
-        tiePaletteFileName = tiePalettePathInput.text;
-        xWingCrftResourcePath = xWingCrftResourcePathInput.text;
-        xWingCplxResourcePath = xWingCplxResourcePathInput.text;
-        xWingCplxWindowsResourcePath = xWingCplxWindowsResourcePathInput.text;
-        tieShipResourcePath = tieShipResourcePathInput.text;
-
-        if (!string.IsNullOrWhiteSpace(xwPaletteFileName) && !string.Equals(Path.GetFileName(xwPaletteFileName), "vga.pac", StringComparison.OrdinalIgnoreCase))
-            xwPaletteFileName = Path.Combine(xwPaletteFileName, "vga.pac");
-
-        if (!string.IsNullOrWhiteSpace(tiePaletteFileName) && !string.Equals(Path.GetFileName(tiePaletteFileName), "vga.pac", StringComparison.OrdinalIgnoreCase))
-            tiePaletteFileName = Path.Combine(tiePaletteFileName, "vga.pac");
-
-        settingsValidationText.text = string.Empty;
-
-        var isXwPaletteProvided = false;
-        var isTiePaletteProvided = false;
-        var isXwingResourceProvided = false;
-        var isTieResourceProvided = false;
-
-        var validationMessage = ValidatePaths();
-        if (validationMessage != string.Empty)
-        {
-            settingsValidationText.text = validationMessage;
-            return;
-        }
-
-        if (!isXwingResourceProvided && !isTieResourceProvided)
-        {
-            settingsValidationText.text = "Need at least one RESOURCE path configured";
-            return;
-        }
-
-        if (isXwingResourceProvided && !isXwPaletteProvided)
-        {
-            settingsValidationText.text = "Need an X-Wing VGA.PAC configured in order to display X-Wing models";
-            return;
-        }
-
-        if (isTieResourceProvided && !isTiePaletteProvided)
-        {
-            settingsValidationText.text = "Need a TIE Fighter VGA.PAC configured in order to display TIE Fighter models";
-            return;
-        }
-
-        SaveSettings();
-
-        Destroy(settingsPanel);
-
-        inSettingsMenu = false;
-
-        LoadModels();
-
-        string ValidatePaths()
-        {
-            if (!ValidateFileExists(xwPaletteFileName, ref isXwPaletteProvided))
-                return "Cannot find X-Wing VGA.PAC";
-
-            if (!ValidateFileExists(tiePaletteFileName, ref isTiePaletteProvided))
-                return "Cannot find TIE Fighter VGA.PAC";
-
-            if (!ValidatePath(xWingCrftResourcePath, ref isXwingResourceProvided, "species.lfd"))
-                return "Invalid X-Wing 93 RESOURCE folder";
-
-            if (!ValidatePath(xWingCplxResourcePath, ref isXwingResourceProvided, "species.lfd", "bwing.cft"))
-                return "Invalid X-Wing 94 RESOURCE folder";
-
-            if (!ValidatePath(xWingCplxWindowsResourcePath, ref isXwingResourceProvided, "species.lfd"))
-                return "Invalid X-Wing 98 RESOURCE folder";
-
-            if (!ValidatePath(tieShipResourcePath, ref isTieResourceProvided, "species.lfd", "species2.lfd", "species3.lfd"))
-            {
-                // Original XW only had species.lfd
-                if (!ValidatePath(tieShipResourcePath, ref isTieResourceProvided, "species.lfd"))
-                    return "Invalid TIE Fighter RESOURCE folder";
-            }
-
-            return string.Empty;
-        }
-
-        bool ValidateFileExists(string filename, ref bool isProvided)
-        {
-            if (!string.IsNullOrWhiteSpace(filename))
-            {
-                isProvided = true;
-
-                if (!File.Exists(filename))
-                    return false;
-            }
-
-            return true;
-        }
-
-        bool ValidatePath(string path, ref bool isProvided, params string[] filenamesToCheck)
-        {
-            if (!string.IsNullOrWhiteSpace(path))
-            {
-                isProvided = true;
-
-                if (!Directory.Exists(path))
-                    return false;
-
-                foreach (var filename in filenamesToCheck)
-                    if (!File.Exists(Path.Combine(path, filename)))
-                        return false;
-            }
-
-            return true;
-        }
-    }
-
-    void LoadSettings()
-    {
-        xwPaletteFileName = PlayerPrefs.GetString("XwingPalette");
-        tiePaletteFileName = PlayerPrefs.GetString("TiePalette");
-        xWingCrftResourcePath = PlayerPrefs.GetString("XwingCrftResourcePath");
-        xWingCplxResourcePath = PlayerPrefs.GetString("XwingCplxResourcePath");
-        xWingCplxWindowsResourcePath = PlayerPrefs.GetString("XwingCplxWindowsResourcePath");
-        tieShipResourcePath = PlayerPrefs.GetString("TieShipResourcePath");
-
-        xwPalettePathInput.text = xwPaletteFileName;
-        tiePalettePathInput.text = tiePaletteFileName;
-        xWingCrftResourcePathInput.text = xWingCrftResourcePath;
-        xWingCplxResourcePathInput.text = xWingCplxResourcePath;
-        xWingCplxWindowsResourcePathInput.text = xWingCplxWindowsResourcePath;
-        tieShipResourcePathInput.text = tieShipResourcePath;
-    }
-
-    void SaveSettings()
-    {
-        PlayerPrefs.SetString("XwingPalette", xwPaletteFileName);
-        PlayerPrefs.SetString("TiePalette", tiePaletteFileName);
-        PlayerPrefs.SetString("XwingCrftResourcePath", xWingCrftResourcePath);
-        PlayerPrefs.SetString("XwingCplxResourcePath", xWingCplxResourcePath);
-        PlayerPrefs.SetString("XwingCplxWindowsResourcePath", xWingCplxWindowsResourcePath);
-        PlayerPrefs.SetString("TieShipResourcePath", tieShipResourcePath);
-        PlayerPrefs.Save();
-    }
-
-    void LoadShip()
+    private void LoadShip()
     {
         if (_shipContainer != null)
             Destroy(_shipContainer);
@@ -586,7 +434,7 @@ public class ModelLoader : MonoBehaviour
         CreateMesh(record.Type, record.Name, record.Model.Sections, sectionHardpoints, isBigShip);
     }
 
-    void CreateMesh(string recordType, string recordName, SectionRecord[] sections, HardpointRecord[][] sectionHardpoints, bool isBigShip)
+    private void CreateMesh(string recordType, string recordName, SectionRecord[] sections, HardpointRecord[][] sectionHardpoints, bool isBigShip)
     {
         Debug.Log($"Loading {recordType} {recordName}");
 

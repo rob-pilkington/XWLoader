@@ -226,7 +226,7 @@ public class ModelLoader : MonoBehaviour
 
         if (Input.GetMouseButton(0))
         {
-            cameraTransform.RotateAround(_rotationOrigin, cameraTransform.up, Input.GetAxis("Mouse X") * 5);
+            cameraTransform.RotateAround(_rotationOrigin, Vector3.up, Input.GetAxis("Mouse X") * 5);
             cameraTransform.RotateAround(_rotationOrigin, cameraTransform.right, -Input.GetAxis("Mouse Y") * 5);
         }
         else if (Input.GetMouseButton(2))

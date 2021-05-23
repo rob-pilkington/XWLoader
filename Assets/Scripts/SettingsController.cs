@@ -3,15 +3,6 @@ using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 
-// TODO: for settings refactor
-// * validate settings on load
-//   * if invalid settings found (including no settings), display settings on program load
-// * add cancel button to settings UI - canceling when settings are displayed on load will exit the program
-
-// TODO: UI improvements:
-// * add settings button
-// * add fullscreen toggle button?
-// * add exit button
 public class SettingsController : MonoBehaviour
 {
     [SerializeField] private GameObject _settingsPanel = null;

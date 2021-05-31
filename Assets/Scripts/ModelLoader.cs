@@ -10,11 +10,7 @@ using Assets.Scripts.Palette;
 
 public class ModelLoader : MonoBehaviour
 {
-    private List<LoadedModel> _shipRecords;
-    private int _currentRecord = 0;
-    private int _currentLod = 0;
-    private bool _showSpecialMarkings = true;
-    private int _currentFlightGroupColorIndex = 0;
+    private ModelNavigator _models = null;
 
     [SerializeField] private GameObject _baseShip = null;
     [SerializeField] private GameObject _baseSection = null;
@@ -30,6 +26,9 @@ public class ModelLoader : MonoBehaviour
     [SerializeField] private Text _modelName = null;
     [SerializeField] private Text _modelSize = null;
     [SerializeField] private Text _modelSections = null;
+
+    [SerializeField] private Dropdown _sourceDropdown = null;
+    [SerializeField] private Dropdown _modelDropdown = null;
 
     [SerializeField] private Light _light = null;
 
@@ -56,6 +55,51 @@ public class ModelLoader : MonoBehaviour
     private void SettingsController_SettingsLoaded(object sender, EventArgs e) => LoadModels();
 
     public void SettingsButtonOnClick() => _settingsController.ShowSettingsWindow();
+
+    public void SourceDropdownValueChanged(int index)
+    {
+        PopulateModelDropdown(_sourceDropdown.options[index].text);
+        ModelDropdownValueChanged(0);
+    }
+
+    public void ModelDropdownValueChanged(int index)
+    {
+        var source = _sourceDropdown.options[_sourceDropdown.value].text;
+        var model = _modelDropdown.options[index].text;
+
+        LoadShip(_models.PickModel(source, model));
+    }
+
+    private void PopulateSourceDropdown()
+    {
+        _sourceDropdown.ClearOptions();
+        _sourceDropdown.AddOptions(_models.Sources);
+        _sourceDropdown.SetValueWithoutNotify(0);
+    }
+
+    private void PopulateModelDropdown(string source)
+    {
+        _modelDropdown.ClearOptions();
+        _modelDropdown.AddOptions(_models.ModelNamesForSource(source));
+        _modelDropdown.SetValueWithoutNotify(0);
+    }
+
+    private void SetDropdownSelection(string source, string model)
+    {
+        if (!source.Equals(_sourceDropdown.options[_sourceDropdown.value].text, StringComparison.OrdinalIgnoreCase))
+        {
+            var sourceOption = _sourceDropdown.options.First(x => x.text.Equals(source, StringComparison.OrdinalIgnoreCase));
+            var sourceIndex = _sourceDropdown.options.IndexOf(sourceOption);
+            _sourceDropdown.SetValueWithoutNotify(sourceIndex);
+
+            PopulateModelDropdown(source);
+        }
+        
+        var modelOption = _modelDropdown.options.First(x => x.text.Equals(model, StringComparison.OrdinalIgnoreCase));
+        var modelIndex = _modelDropdown.options.IndexOf(modelOption);
+
+        _modelDropdown.SetValueWithoutNotify(modelIndex);
+    }
 
     private void LoadModels()
     {
@@ -145,7 +189,7 @@ public class ModelLoader : MonoBehaviour
         if (xwingPaletteMapper != null) SetupMaterialPropertyBlock(xwingMaterialPropertyBlock, xwingPaletteMapper);
         if (tieFighterPaletteMapper != null) SetupMaterialPropertyBlock(tieFighterMaterialPropertyBlock, tieFighterPaletteMapper);
 
-        _shipRecords = new List<LoadedModel>();
+        var shipRecords = new List<LoadedModel>();
 
         foreach (var fileGroup in fileGroups)
         {
@@ -168,7 +212,7 @@ public class ModelLoader : MonoBehaviour
                         {
                             var ship = record.Value;
                             if (ship.RecordType == "CRFT" || ship.RecordType == "CPLX" || ship.RecordType == "SHIP")
-                                _shipRecords.Add(new LoadedModel(fileToLoad.Source, ship.RecordType, ship.RecordName, (ICraft)ship));
+                                shipRecords.Add(new LoadedModel(fileToLoad.Source, ship.RecordType, ship.RecordName, (ICraft)ship));
                         }
                     }
                     else // Just load a specific model
@@ -177,7 +221,7 @@ public class ModelLoader : MonoBehaviour
 
                         reader.Read(fs, fileGroup.Key, fileToLoad.Filename);
 
-                        _shipRecords.Add(new LoadedModel(
+                        shipRecords.Add(new LoadedModel(
                             fileToLoad.Source,
                             fileGroup.Key,
                             Path.GetFileNameWithoutExtension(fileToLoad.Filename),
@@ -195,8 +239,14 @@ public class ModelLoader : MonoBehaviour
             }
         }
 
-        _currentRecord = 0;
-        LoadShip();
+        _models = new ModelNavigator(shipRecords);
+
+        var model = _models.PickModel(0);
+
+        PopulateSourceDropdown();
+        PopulateModelDropdown(model.Source);
+
+        LoadShip(model);
     }
 
     private static void SetupMaterialPropertyBlock(MaterialPropertyBlock materialPropertyBlock, IPaletteMapper paletteMapper)
@@ -216,7 +266,11 @@ public class ModelLoader : MonoBehaviour
         if (Input.GetKey(KeyCode.Escape))
             Application.Quit();
 
-        if (_settingsController.InSettingsMenu) // everything after this is controls
+        if (_settingsController.InSettingsMenu)
+            return;
+
+        // Don't detect inputs when the dropdowns are open
+        if (_sourceDropdown.transform.Find("Dropdown List") != null || _modelDropdown.transform.Find("Dropdown List") != null)
             return;
 
         var cameraTransform = Camera.main.transform;
@@ -297,106 +351,40 @@ public class ModelLoader : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.PageUp))
         {
-            // TODO: rewrite this with better organization for the sources.
-            if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
-            {
-                if (_shipRecords.Select(x => x.Source).Distinct().Count() > 1)
-                {
-                    var currentSource = _shipRecords[_currentRecord].Source;
+            var model = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
+                ? _models.FirstModelInPreviousGroup()
+                : _models.PreviousModel();
 
-                    // Find the last record for the current source.
-                    while (_shipRecords[_currentRecord].Source == currentSource)
-                        ChangeRecord();
+            LoadShip(model);
 
-                    // Find the first record for the destination source.
-                    var destinationSource = _shipRecords[_currentRecord].Source;
-                    while (_currentRecord > 0 && _shipRecords[_currentRecord - 1].Source == destinationSource)
-                        ChangeRecord();
-                }
-            }
-            else
-            {
-                ChangeRecord();
-            }
-
-            _currentLod = 0;
-
-            LoadShip();
-
-            void ChangeRecord()
-            {
-                if (--_currentRecord < 0)
-                    _currentRecord = _shipRecords.Count - 1;
-            }
+            SetDropdownSelection(model.Source, model.Name);
         }
 
         if (Input.GetKeyDown(KeyCode.PageDown))
         {
-            if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
-            {
-                if (_shipRecords.Select(x => x.Source).Distinct().Count() > 1)
-                {
-                    var currentSource = _shipRecords[_currentRecord].Source;
-                    while (_shipRecords[_currentRecord].Source == currentSource)
-                        ChangeRecord();
-                }
-            }
-            else
-            {
-                ChangeRecord();
-            }
+            var model = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
+                ? _models.FirstModelInNextGroup()
+                : _models.NextModel();
 
-            _currentLod = 0;
+            LoadShip(model);
 
-            LoadShip();
-
-            void ChangeRecord()
-            {
-                if (++_currentRecord >= _shipRecords.Count)
-                    _currentRecord = 0;
-            }
+            SetDropdownSelection(model.Source, model.Name);
         }
 
         if (Input.GetKeyDown(KeyCode.LeftBracket))
-        {
-            if (--_currentLod < 0)
-                _currentLod = 0;
-
-            LoadShip();
-        }
+            LoadShip(_models.PreviousLod());
 
         if (Input.GetKeyDown(KeyCode.RightBracket))
-        {
-            var maxLod = _shipRecords[_currentRecord].Model.Sections.Select(x => x.LodRecords.Count).Max();
-
-            if (++_currentLod >= maxLod)
-                _currentLod = maxLod - 1;
-
-            LoadShip();
-        }
+            LoadShip(_models.NextLod());
 
         if (Input.GetKeyDown(KeyCode.Backspace))
-        {
-            _showSpecialMarkings = !_showSpecialMarkings;
-
-            LoadShip();
-        }
+            LoadShip(_models.ToggleShowSpecialMarkings());
 
         if (Input.GetKeyDown(KeyCode.Minus))
-        {
-            if (--_currentFlightGroupColorIndex < 0)
-                _currentFlightGroupColorIndex = _customFlightGroupColors.Count + 2; // 3 regular colors + custom colors
-
-            LoadShip();
-        }
+            LoadShip(_models.PreviousFlightGroupColor());
 
         if (Input.GetKeyDown(KeyCode.Equals))
-        {
-            if (++_currentFlightGroupColorIndex >= _customFlightGroupColors.Count + 3) // 3 regular colors + custom colors
-                _currentFlightGroupColorIndex = 0;
-
-            LoadShip();
-        }
+            LoadShip(_models.NextFlightGroupColor());
 
         if (Input.GetKeyDown(KeyCode.Backslash))
         {
@@ -418,12 +406,10 @@ public class ModelLoader : MonoBehaviour
             _light.transform.Rotate(Vector3.up, 90 * Time.fixedDeltaTime, Space.World);
     }
 
-    private void LoadShip()
+    private void LoadShip(LoadedModel record)
     {
         if (_shipContainer != null)
             Destroy(_shipContainer);
-
-        var record = _shipRecords[_currentRecord];
 
         var isBigShip = IsBigShip(record.Type, record.Name);
 
@@ -444,9 +430,9 @@ public class ModelLoader : MonoBehaviour
 
         sections = FilterSections(recordType, recordName, sections);
 
-        var disabledMarkingSectionIndices = _showSpecialMarkings ? new int[0] : GetDisabledMarkingSectionIndices(recordType, recordName);
+        var disabledMarkingSectionIndices = _models.ShowSpecialMarkings ? new int[0] : GetDisabledMarkingSectionIndices(recordType, recordName);
 
-        _shipContainer = meshCreater.CreateGameObject(sections, sectionHardpoints, _currentLod, _currentFlightGroupColorIndex, disabledMarkingSectionIndices);
+        _shipContainer = meshCreater.CreateGameObject(sections, sectionHardpoints, _models.CurrentLod, _models.CurrentFlightGroupColorIndex, disabledMarkingSectionIndices);
 
         foreach (var meshRenderer in _shipContainer.GetComponentsInChildren<MeshRenderer>())
             if (meshRenderer.name.StartsWith("Section", StringComparison.OrdinalIgnoreCase))
@@ -559,5 +545,142 @@ public class ModelLoader : MonoBehaviour
         public string Type { get; private set; }
         public string Name { get; private set; }
         public ICraft Model { get; private set; }
+    }
+
+    private class ModelNavigator
+    {
+        private List<LoadedModel> _shipRecords;
+
+        public int CurrentRecord { get; private set; } = 0;
+        public int CurrentLod { get; private set; } = 0;
+        public bool ShowSpecialMarkings { get; private set; }  = true;
+        public int CurrentFlightGroupColorIndex { get; private set; } = 0;
+
+        public List<string> Sources => _shipRecords.Select(x => x.Source).Distinct().ToList();
+
+        private LoadedModel _currentModel => _shipRecords[CurrentRecord];
+
+        public ModelNavigator(List<LoadedModel> models)
+        {
+            _shipRecords = models;
+        }
+
+        public List<string> ModelNamesForSource(string source)
+        {
+            return _shipRecords
+                .Where(x => x.Source.Equals(source, StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Name)
+                .ToList();
+        }
+
+        public LoadedModel PickModel(string source, string name)
+        {
+            var model = _shipRecords.First(x => x.Source.Equals(source, StringComparison.OrdinalIgnoreCase) && x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+            CurrentRecord = _shipRecords.IndexOf(model);
+            CurrentLod = 0;
+
+            return _currentModel;
+        }
+
+        public LoadedModel PickModel(int index)
+        {
+            CurrentRecord = index;
+            CurrentLod = 0;
+
+            return _currentModel;
+        }
+
+        public LoadedModel NextModel()
+        {
+            if (++CurrentRecord >= _shipRecords.Count)
+                CurrentRecord = 0;
+
+            CurrentLod = 0;
+
+            return _currentModel;
+        }
+
+        public LoadedModel PreviousModel()
+        {
+            if (--CurrentRecord < 0)
+                CurrentRecord = _shipRecords.Count - 1;
+
+            CurrentLod = 0;
+
+            return _currentModel;
+        }
+
+        public LoadedModel FirstModelInNextGroup()
+        {
+            if (_shipRecords.Select(x => x.Source).Distinct().Count() > 1)
+            {
+                var currentSource = _shipRecords[CurrentRecord].Source;
+                while (_shipRecords[CurrentRecord].Source == currentSource)
+                    NextModel();
+            }
+
+            return _currentModel;
+        }
+
+        public LoadedModel FirstModelInPreviousGroup()
+        {
+            if (_shipRecords.Select(x => x.Source).Distinct().Count() > 1)
+            {
+                var currentSource = _shipRecords[CurrentRecord].Source;
+
+                // Find the last record for the current source.
+                while (_shipRecords[CurrentRecord].Source == currentSource)
+                    PreviousModel();
+
+                // Find the first record for the destination source.
+                var destinationSource = _shipRecords[CurrentRecord].Source;
+                while (CurrentRecord > 0 && _shipRecords[CurrentRecord - 1].Source == destinationSource)
+                    PreviousModel();
+            }
+
+            return _currentModel;
+        }
+
+        public LoadedModel NextLod()
+        {
+            var maxLod = _shipRecords[CurrentRecord].Model.Sections.Select(x => x.LodRecords.Count).Max();
+
+            if (++CurrentLod >= maxLod)
+                CurrentLod = maxLod - 1;
+
+            return _currentModel;
+        }
+
+        public LoadedModel PreviousLod()
+        {
+            if (--CurrentLod < 0)
+                CurrentLod = 0;
+
+            return _currentModel;
+        }
+
+        public LoadedModel ToggleShowSpecialMarkings()
+        {
+            ShowSpecialMarkings = !ShowSpecialMarkings;
+
+            return _currentModel;
+        }
+
+        public LoadedModel PreviousFlightGroupColor()
+        {
+            if (--CurrentFlightGroupColorIndex < 0)
+                CurrentFlightGroupColorIndex = _customFlightGroupColors.Count + 2; // 3 regular colors + custom colors
+
+            return _currentModel;
+        }
+
+        public LoadedModel NextFlightGroupColor()
+        {
+            if (++CurrentFlightGroupColorIndex >= _customFlightGroupColors.Count + 3) // 3 regular colors + custom colors
+                CurrentFlightGroupColorIndex = 0;
+
+            return _currentModel;
+        }
     }
 }

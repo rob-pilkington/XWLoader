@@ -258,10 +258,10 @@ namespace Assets.Scripts
 
                             // Now store
                             markDetail.DrawTriangles.AddRange(newBaseTris);
-                        }//*/
+                        }
 
-                        if (PolygonCutter.Cutter.ReportMessages && CulledVerts > 0)
-                            UnityEngine.Debug.Log($"Removed {CulledVerts} carving verts");
+                        //if (PolygonCutter.Cutter.ReportMessages && CulledVerts > 0)
+                        //    UnityEngine.Debug.Log($"Removed {CulledVerts} carving verts");
                     }
 
 
@@ -384,7 +384,7 @@ namespace Assets.Scripts
                     if (HasIntersectionPoint(markVertices, out var intersectionPoint, out var splitPoint1, out var splitPoint2))
                     {
                         // If the polygon intersects with itself, we need to split it into two separate polygons.
-                        Debug.Log($"Model has intersection point between vertices {splitPoint1} and {splitPoint2} of {markVertices.Count}.");
+                        //Debug.Log($"Model has intersection point between vertices {splitPoint1} and {splitPoint2} of {markVertices.Count}.");
 
                         var vertexRange1 = markVertices.Take(splitPoint1).ToList();
                         var vertexRange2 = markVertices.Skip(splitPoint1).Take(splitPoint2 - splitPoint1).ToList();
@@ -409,7 +409,7 @@ namespace Assets.Scripts
                         if (HasIntersectionPoint(vertexRange2, out intersectionPoint, out splitPoint1, out splitPoint2))
                         {
                             // If the polygon intersects with itself, we need to split it into two separate polygons.
-                            Debug.Log($"Model has intersection point between vertices {splitPoint1} and {splitPoint2} of {vertexRange2.Count}.");
+                            // Debug.Log($"Model has intersection point between vertices {splitPoint1} and {splitPoint2} of {vertexRange2.Count}.");
 
                             var vertexRange3 = vertexRange2.Take(splitPoint1).ToList();
                             var vertexRange4 = vertexRange2.Skip(splitPoint1).Take(splitPoint2 - splitPoint1).ToList();

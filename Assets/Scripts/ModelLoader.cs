@@ -549,7 +549,7 @@ public class ModelLoader : MonoBehaviour
 
     private class ModelNavigator
     {
-        private List<LoadedModel> _shipRecords;
+        private readonly List<LoadedModel> _shipRecords;
 
         public int CurrentRecord { get; private set; } = 0;
         public int CurrentLod { get; private set; } = 0;
@@ -558,7 +558,7 @@ public class ModelLoader : MonoBehaviour
 
         public List<string> Sources => _shipRecords.Select(x => x.Source).Distinct().ToList();
 
-        private LoadedModel _currentModel => _shipRecords[CurrentRecord];
+        private LoadedModel CurrentModel => _shipRecords[CurrentRecord];
 
         public ModelNavigator(List<LoadedModel> models)
         {
@@ -580,7 +580,7 @@ public class ModelLoader : MonoBehaviour
             CurrentRecord = _shipRecords.IndexOf(model);
             CurrentLod = 0;
 
-            return _currentModel;
+            return CurrentModel;
         }
 
         public LoadedModel PickModel(int index)
@@ -588,7 +588,7 @@ public class ModelLoader : MonoBehaviour
             CurrentRecord = index;
             CurrentLod = 0;
 
-            return _currentModel;
+            return CurrentModel;
         }
 
         public LoadedModel NextModel()
@@ -598,7 +598,7 @@ public class ModelLoader : MonoBehaviour
 
             CurrentLod = 0;
 
-            return _currentModel;
+            return CurrentModel;
         }
 
         public LoadedModel PreviousModel()
@@ -608,7 +608,7 @@ public class ModelLoader : MonoBehaviour
 
             CurrentLod = 0;
 
-            return _currentModel;
+            return CurrentModel;
         }
 
         public LoadedModel FirstModelInNextGroup()
@@ -620,7 +620,7 @@ public class ModelLoader : MonoBehaviour
                     NextModel();
             }
 
-            return _currentModel;
+            return CurrentModel;
         }
 
         public LoadedModel FirstModelInPreviousGroup()
@@ -639,7 +639,7 @@ public class ModelLoader : MonoBehaviour
                     PreviousModel();
             }
 
-            return _currentModel;
+            return CurrentModel;
         }
 
         public LoadedModel NextLod()
@@ -649,7 +649,7 @@ public class ModelLoader : MonoBehaviour
             if (++CurrentLod >= maxLod)
                 CurrentLod = maxLod - 1;
 
-            return _currentModel;
+            return CurrentModel;
         }
 
         public LoadedModel PreviousLod()
@@ -657,14 +657,14 @@ public class ModelLoader : MonoBehaviour
             if (--CurrentLod < 0)
                 CurrentLod = 0;
 
-            return _currentModel;
+            return CurrentModel;
         }
 
         public LoadedModel ToggleShowSpecialMarkings()
         {
             ShowSpecialMarkings = !ShowSpecialMarkings;
 
-            return _currentModel;
+            return CurrentModel;
         }
 
         public LoadedModel PreviousFlightGroupColor()
@@ -672,7 +672,7 @@ public class ModelLoader : MonoBehaviour
             if (--CurrentFlightGroupColorIndex < 0)
                 CurrentFlightGroupColorIndex = _customFlightGroupColors.Count + 2; // 3 regular colors + custom colors
 
-            return _currentModel;
+            return CurrentModel;
         }
 
         public LoadedModel NextFlightGroupColor()
@@ -680,7 +680,7 @@ public class ModelLoader : MonoBehaviour
             if (++CurrentFlightGroupColorIndex >= _customFlightGroupColors.Count + 3) // 3 regular colors + custom colors
                 CurrentFlightGroupColorIndex = 0;
 
-            return _currentModel;
+            return CurrentModel;
         }
     }
 }

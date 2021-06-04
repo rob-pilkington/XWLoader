@@ -86,10 +86,8 @@ namespace Assets.Scripts.LfdReader
         {
             SetHeader(type, name, (int)stream.Length);
 
-            using (var reader = new BinaryReader(stream))
-            {
-                ReadRecordData(reader);
-            }
+            using var reader = new BinaryReader(stream);
+            ReadRecordData(reader);
         }
 
         protected abstract void ReadRecordData(BinaryReader reader);

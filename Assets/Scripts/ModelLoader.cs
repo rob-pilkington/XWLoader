@@ -278,6 +278,8 @@ public class ModelLoader : MonoBehaviour
         var deltaTranslate = 100 * Time.deltaTime;
         var deltaRotate = 50 * Time.deltaTime;
 
+        var movemenScaletFactor = _rotationOriginDistance * 0.25f;
+
         if (Input.GetMouseButton(0))
         {
             cameraTransform.RotateAround(_rotationOrigin, Vector3.up, Input.GetAxis("Mouse X") * 5);
@@ -285,15 +287,16 @@ public class ModelLoader : MonoBehaviour
         }
         else if (Input.GetMouseButton(2))
         {
-            TranslateCamera(Vector3.right * -Input.GetAxis("Mouse X"));
-            TranslateCamera(Vector3.up * -Input.GetAxis("Mouse Y"));
+            const float PanBaseSpeed = 0.1f;
+            TranslateCamera(Vector3.right * movemenScaletFactor * PanBaseSpeed * -Input.GetAxis("Mouse X"));
+            TranslateCamera(Vector3.up * movemenScaletFactor * PanBaseSpeed * -Input.GetAxis("Mouse Y"));
         }
 
         if (Input.mouseScrollDelta.y != 0)
         {
             if (_rotationOriginDistance >= 1 || Input.mouseScrollDelta.y < 0) // prevent moving closer than 1 unit from center
             {
-                var amountToTravel = _rotationOriginDistance * 0.25f * Input.mouseScrollDelta.y;
+                var amountToTravel = movemenScaletFactor * Input.mouseScrollDelta.y;
                 cameraTransform.position = Vector3.MoveTowards(cameraTransform.position, _rotationOrigin, amountToTravel);
                 _rotationOriginDistance -= amountToTravel;
             }

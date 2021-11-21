@@ -11,7 +11,7 @@ namespace Assets.Scripts.LfdReader
     public class CrftRecord : LfdRecord, ICraft
     {
         /// <summary>
-        /// The length. Again. Strange.
+        /// The length of the record.
         /// </summary>
         public short RecordLength { get; protected set; }
 

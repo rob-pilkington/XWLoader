@@ -18,7 +18,7 @@ namespace Assets.Scripts.LfdReader
         public byte[] MainHeaderData { get; protected set; }
 
         /// <summary>
-        /// Number of sections?
+        /// Number of sections
         /// </summary>
         public byte SectionCount { get; protected set; }
 

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using UnityEngine;
 
 namespace Assets.Scripts.LfdReader
 {
@@ -31,17 +30,13 @@ namespace Assets.Scripts.LfdReader
                     _ => throw new NotSupportedException("Unknown record type: " + entry.Type)
                 };
 
-                Debug.Log($"Reading {entry.Type} {entry.Name}");
+                //Debug.Log($"Reading {entry.Type} {entry.Name}");
                 record.ReadLfdRecord(reader);
 
-                try
-                {
+                // The mapped records aren't actually guaranteed to be unique. This shouldn't affect us since as I haven't seen it happen for models,
+                // but we still have to handle it.
+                if (!Records.ContainsKey(entry.Name))
                     Records.Add(entry.Name, record);
-                }
-                catch (ArgumentException)
-                {
-                    // Yeah, just ignore for now
-                }
             }
         }
     }

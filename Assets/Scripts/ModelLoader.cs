@@ -263,7 +263,10 @@ public class ModelLoader : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKey(KeyCode.Escape))
+        var keyboard = UnityEngine.InputSystem.Keyboard.current;
+        var mouse = UnityEngine.InputSystem.Mouse.current;
+
+        if (keyboard.escapeKey.isPressed)
             Application.Quit();
 
         if (_settingsController.InSettingsMenu)
@@ -278,64 +281,68 @@ public class ModelLoader : MonoBehaviour
         var deltaTranslate = 100 * Time.deltaTime;
         var deltaRotate = 50 * Time.deltaTime;
 
-        var movemenScaletFactor = _rotationOriginDistance * 0.25f;
+        var movementScaleFactor = _rotationOriginDistance * 0.25f;
 
-        if (Input.GetMouseButton(0))
+        if (mouse.leftButton.isPressed)
         {
-            cameraTransform.RotateAround(_rotationOrigin, Vector3.up, Input.GetAxis("Mouse X") * 5);
-            cameraTransform.RotateAround(_rotationOrigin, cameraTransform.right, -Input.GetAxis("Mouse Y") * 5);
+            // Note: was mouse axis
+            var mouseDelta = mouse.delta.ReadValue();
+            cameraTransform.RotateAround(_rotationOrigin, Vector3.up, mouseDelta.x * .25f);
+            cameraTransform.RotateAround(_rotationOrigin, cameraTransform.right, -mouseDelta.y * .25f);
         }
-        else if (Input.GetMouseButton(2))
+        else if (mouse.middleButton.isPressed)
         {
-            const float PanBaseSpeed = 0.1f;
-            TranslateCamera(Vector3.right * movemenScaletFactor * PanBaseSpeed * -Input.GetAxis("Mouse X"));
-            TranslateCamera(Vector3.up * movemenScaletFactor * PanBaseSpeed * -Input.GetAxis("Mouse Y"));
+            const float PanBaseSpeed = 0.005f;
+            var mouseDelta = mouse.delta.ReadValue();
+            TranslateCamera(Vector3.right * movementScaleFactor * PanBaseSpeed * -mouseDelta.x);
+            TranslateCamera(Vector3.up * movementScaleFactor * PanBaseSpeed * -mouseDelta.y);
         }
 
-        if (Input.mouseScrollDelta.y != 0)
+        var mouseScrollY = mouse.scroll.y.ReadValue();
+        if (mouseScrollY != 0)
         {
-            if (_rotationOriginDistance >= 1 || Input.mouseScrollDelta.y < 0) // prevent moving closer than 1 unit from center
+            if (_rotationOriginDistance >= 1 || mouseScrollY < 0) // prevent moving closer than 1 unit from center
             {
-                var amountToTravel = movemenScaletFactor * Input.mouseScrollDelta.y;
+                var amountToTravel = movementScaleFactor * (mouseScrollY > 0 ? 1 : -1);
                 cameraTransform.position = Vector3.MoveTowards(cameraTransform.position, _rotationOrigin, amountToTravel);
                 _rotationOriginDistance -= amountToTravel;
             }
         }
 
-        if (Input.GetKey(KeyCode.W))
+        if (keyboard.wKey.isPressed)
             TranslateCamera(Vector3.forward * deltaTranslate);
 
-        if (Input.GetKey(KeyCode.S))
+        if (keyboard.sKey.isPressed)
             TranslateCamera(Vector3.back * deltaTranslate);
 
-        if (Input.GetKey(KeyCode.D))
+        if (keyboard.dKey.isPressed)
             TranslateCamera(Vector3.right * deltaTranslate);
 
-        if (Input.GetKey(KeyCode.A))
+        if (keyboard.aKey.isPressed)
             TranslateCamera(Vector3.left * deltaTranslate);
 
-        if (Input.GetKey(KeyCode.LeftControl))
+        if (keyboard.leftCtrlKey.isPressed)
             TranslateCamera(Vector3.down * deltaTranslate);
 
-        if (Input.GetKey(KeyCode.Space))
+        if (keyboard.spaceKey.isPressed)
             TranslateCamera(Vector3.up * deltaTranslate);
 
-        if (Input.GetKey(KeyCode.Q))
+        if (keyboard.qKey.isPressed)
             RotateCamera(Vector3.forward, deltaRotate);
 
-        if (Input.GetKey(KeyCode.E))
+        if (keyboard.eKey.isPressed)
             RotateCamera(Vector3.forward, -deltaRotate);
 
-        if (Input.GetKey(KeyCode.UpArrow))
+        if (keyboard.upArrowKey.isPressed)
             RotateCamera(Vector3.right, deltaRotate);
 
-        if (Input.GetKey(KeyCode.DownArrow))
+        if (keyboard.downArrowKey.isPressed)
             RotateCamera(Vector3.right, -deltaRotate);
 
-        if (Input.GetKey(KeyCode.LeftArrow))
+        if (keyboard.leftArrowKey.isPressed)
             RotateCamera(Vector3.up, -deltaRotate);
 
-        if (Input.GetKey(KeyCode.RightArrow))
+        if (keyboard.rightArrowKey.isPressed)
             RotateCamera(Vector3.up, deltaRotate);
 
         void TranslateCamera(Vector3 translation)
@@ -352,9 +359,9 @@ public class ModelLoader : MonoBehaviour
 
         void RecalculateRotationOrigin() =>_rotationOrigin = cameraTransform.position + cameraTransform.forward * _rotationOriginDistance;
 
-        if (Input.GetKeyDown(KeyCode.PageUp))
+        if (keyboard.pageUpKey.wasPressedThisFrame)
         {
-            var model = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
+            var model = keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed
                 ? _models.FirstModelInPreviousGroup()
                 : _models.PreviousModel();
 
@@ -363,9 +370,9 @@ public class ModelLoader : MonoBehaviour
             SetDropdownSelection(model.Source, model.Name);
         }
 
-        if (Input.GetKeyDown(KeyCode.PageDown))
+        if (keyboard.pageDownKey.wasPressedThisFrame)
         {
-            var model = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
+            var model = keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed
                 ? _models.FirstModelInNextGroup()
                 : _models.NextModel();
 
@@ -374,22 +381,22 @@ public class ModelLoader : MonoBehaviour
             SetDropdownSelection(model.Source, model.Name);
         }
 
-        if (Input.GetKeyDown(KeyCode.LeftBracket))
+        if (keyboard.leftBracketKey.wasPressedThisFrame)
             LoadShip(_models.PreviousLod());
 
-        if (Input.GetKeyDown(KeyCode.RightBracket))
+        if (keyboard.rightBracketKey.wasPressedThisFrame)
             LoadShip(_models.NextLod());
 
-        if (Input.GetKeyDown(KeyCode.Backspace))
+        if (keyboard.backspaceKey.wasPressedThisFrame)
             LoadShip(_models.ToggleShowSpecialMarkings());
 
-        if (Input.GetKeyDown(KeyCode.Minus))
+        if (keyboard.minusKey.wasPressedThisFrame)
             LoadShip(_models.PreviousFlightGroupColor());
 
-        if (Input.GetKeyDown(KeyCode.Equals))
+        if (keyboard.equalsKey.wasPressedThisFrame)
             LoadShip(_models.NextFlightGroupColor());
 
-        if (Input.GetKeyDown(KeyCode.Backslash))
+        if (keyboard.backslashKey.wasPressedThisFrame)
         {
             var meshRenderers = _shipContainer.transform.GetComponentsInChildren<MeshRenderer>()
                 .Where(c => c.name.StartsWith("Hardpoint", StringComparison.OrdinalIgnoreCase))
@@ -399,7 +406,7 @@ public class ModelLoader : MonoBehaviour
                 meshRenderer.enabled = !meshRenderer.enabled;
         }
 
-        if (Input.GetKeyDown(KeyCode.L))
+        if (keyboard.lKey.wasPressedThisFrame)
             _enableLightRotation = !_enableLightRotation;
     }
 

@@ -62,6 +62,11 @@ namespace Assets.Scripts.Palette
         protected int GlowGreenIndex { get; private set; }
         protected int GlowBlueIndex { get; private set; }
 
+        private const int BaseFlightGroupColorCount = 3;
+        protected abstract int FlightGroupColorRedIndex { get; }
+        protected abstract int FlightGroupColorBlueIndex { get; }
+        protected abstract int FlightGroupColorYellowIndex { get; }
+
         protected int CustomFlightGroupColorStartXOffset { get; private set; }
         protected int CustomFlightGroupColorCount { get; private set; }
 
@@ -74,7 +79,15 @@ namespace Assets.Scripts.Palette
 
         private static Color ColorFromBytes(byte[] bytes) => new Color(Convert.ToSingle(bytes[0]) / 63, Convert.ToSingle(bytes[1]) / 63, Convert.ToSingle(bytes[2]) / 63);
 
-        public abstract ColorInfo GetColorInfo(byte colorId, int? flightGroupColor);
+        public ColorInfo GetColorInfo(byte colorId, int? flightGroupColor)
+        {
+            var index = GetBaseColorIndex(GetBaseColorId(colorId), flightGroupColor);
+
+            if (index is null)
+                Debug.LogWarning($"Unknown color: {colorId} ({colorId:X})");
+
+            return new ColorInfo(index, IsFlatShaded(colorId));
+        }
 
         public Vector2 GetUv(ColorInfo colorInfo)
         {
@@ -88,6 +101,26 @@ namespace Assets.Scripts.Palette
         protected bool IsFlatShaded(byte colorId) => (colorId & 0x80) != 0;
 
         protected byte GetBaseColorId(byte colorId) => (byte)(colorId & 0x7f);
+
+        protected abstract int? GetBaseColorIndex(byte baseColorId, int? flightGroupColor);
+
+        protected int GetFlightGroupColorIndex(int flightGroupColor) => flightGroupColor switch
+        {
+            0 => FlightGroupColorRedIndex,
+            1 => FlightGroupColorBlueIndex,
+            2 => FlightGroupColorYellowIndex,
+            _ => GetCustomColorIndex(flightGroupColor, FlightGroupColorRedIndex)
+        };
+
+        private int GetCustomColorIndex(int flightGroupColor, int defaultIndex)
+        {
+            var customColor = flightGroupColor - BaseFlightGroupColorCount;
+
+            if (customColor >= 0 && customColor < CustomFlightGroupColorCount)
+                return CustomFlightGroupColorStartXOffset + customColor;
+
+            return defaultIndex;
+        }
 
         public Texture GeneratePaletteTexture()
         {
@@ -170,92 +203,67 @@ namespace Assets.Scripts.Palette
         protected override int CockpitStartXOffset => Cockpit;
         protected override int CockpitPaletteLength => 12;
 
-        public override ColorInfo GetColorInfo(byte colorId, int? flightGroupColor)
+        protected override int FlightGroupColorRedIndex => Red + RegularOffset;
+        protected override int FlightGroupColorBlueIndex => Blue + RegularOffset;
+        protected override int FlightGroupColorYellowIndex => Yellow + RegularOffset;
+
+        protected override int? GetBaseColorIndex(byte baseColorId, int? flightGroupColor) => baseColorId switch
         {
-            var index = GetIndex();
+            0x1 => ImperialBlue + LowOffset, // first 12
+            0x2 => ImperialGray + LowOffset, // first 12
+            0x3 => RebelBeige + LowOffset, // first 12
+            0x4 => Gray + LowOffset, // first 12
+            0x5 => ImperialBlue + MidOffset, // last 12
+            0x6 => ImperialGray + MidOffset, // last 12
+            0x7 => RebelBeige + MidOffset, // last 12
+            0x8 => Gray + MidOffset, // last 12
+            0x9 => ImperialBlue + HighOffset, // last 8
+            0xa => ImperialGray + HighOffset, // last 8
+            0xb => RebelBeige + HighOffset, // last 8
+            0xc => Gray + HighOffset, // last 8
 
-            return new ColorInfo(index, IsFlatShaded(colorId));
+            0xd => Yellow + RegularOffset, // all 12
+            0xe => GetFlightGroupColorIndex(flightGroupColor ?? 0), // used for flight group color; all 12
+            0xf => Blue + RegularOffset, // all 12
 
-            int? GetIndex()
-            {
-                switch (GetBaseColorId(colorId))
-                {
-                    case 0x1: return ImperialBlue + LowOffset; // first 12
-                    case 0x2: return ImperialGray + LowOffset; // first 12
-                    case 0x3: return RebelBeige + LowOffset; // first 12
-                    case 0x4: return Gray + LowOffset; // first 12
-                    case 0x5: return ImperialBlue + MidOffset; // last 12
-                    case 0x6: return ImperialGray + MidOffset; // last 12
-                    case 0x7: return RebelBeige + MidOffset; // last 12
-                    case 0x8: return Gray + MidOffset; // last 12
-                    case 0x9: return ImperialBlue + HighOffset; // last 8
-                    case 0xa: return ImperialGray + HighOffset; // last 8
-                    case 0xb: return RebelBeige + HighOffset; // last 8
-                    case 0xc: return Gray + HighOffset; // last 8
+            0x10 => Cockpit + 6, // all 12 colors
+            0x11 => Cockpit + 7, // last 8 colors
 
-                    case 0xd: return Yellow + RegularOffset; // all 12
+            0x12 => DeathStar + LowOffset, // all 16 colors
+            0x13 => DeathStar + MidOffset, // last 12
+            0x14 => DeathStar + HighOffset, // last 8
 
-                    case 0xe: // used for flight group color; all 12
-                        if (flightGroupColor.HasValue)
-                        {
-                            if (flightGroupColor.Value == 1)
-                                return Blue + RegularOffset;
+            0x15 => GlowGreenIndex, // flashing green
+            0x16 => GlowRedIndex, // flashing red (red engines)
+            0x17 => GlowBlueIndex, // flashing blue (blue engines)
 
-                            if (flightGroupColor.Value == 2)
-                                return Yellow + RegularOffset;
+            0x18 => Red + LowOffset, // first 8
+            0x19 => Red + RegularOffset, // middle 6
+            0x1a => Red + MidOffset, // last 6
 
-                            var customColor = flightGroupColor.Value - 3;
+            0x1b => Gray + HighOffset, // darkest 4 from gray in the game
 
-                            if (customColor >= 0 && customColor < CustomFlightGroupColorCount)
-                                return CustomFlightGroupColorStartXOffset + customColor;
-                        }
+            // more research needed for these colors:
+            0x1d => ImperialGray + LowOffset + 1,
+            0x1e => RebelBeige + LowOffset + 1,
+            0x1f => Gray + LowOffset + 1,
 
-                        return Red + RegularOffset;
+            0x20 => ImperialBlue + LowOffset + 2,
+            0x21 => ImperialGray + LowOffset + 2,
+            0x22 => RebelBeige + LowOffset + 2,
+            0x23 => Gray + LowOffset + 2,
+            0x24 => ImperialBlue + MidOffset - 1,
+            0x25 => ImperialGray + MidOffset - 1,
+            0x26 => RebelBeige + MidOffset - 2,
+            0x27 => Gray + MidOffset - 2,
+            0x28 => Gray + LowOffset - 1,
+            0x48 => Gray + MidOffset - 1,
+            0x68 => Gray + HighOffset - 1,
 
-                    case 0xf: return Blue + RegularOffset; // all 12
+            0x7f => DeathStar + LowOffset, // used in a DS tower at a lower LOD (as 0xff)
 
-                    case 0x10: return Cockpit + 6; // all 12 colors
-                    case 0x11: return Cockpit + 7; // last 8 colors
-
-                    case 0x12: return DeathStar + LowOffset; // all 16 colors
-                    case 0x13: return DeathStar + MidOffset; // last 12
-                    case 0x14: return DeathStar + HighOffset; // last 8
-
-                    case 0x15: return GlowGreenIndex; // flashing green
-                    case 0x16: return GlowRedIndex; // flashing red (red engines)
-                    case 0x17: return GlowBlueIndex; // flashing blue (blue engines)
-
-                    case 0x18: return Red + LowOffset; // first 8
-                    case 0x19: return Red + RegularOffset; // middle 6
-                    case 0x1a: return Red + MidOffset; // last 6
-
-                    case 0x1b: return Gray + HighOffset; // darkest 4 from gray in the game
-
-                    // more research needed for these colors:
-                    case 0x1d: return ImperialGray + LowOffset + 1;
-                    case 0x1e: return RebelBeige + LowOffset + 1;
-                    case 0x1f: return Gray + LowOffset + 1;
-
-                    case 0x20: return ImperialBlue + LowOffset + 2;
-                    case 0x21: return ImperialGray + LowOffset + 2;
-                    case 0x22: return RebelBeige + LowOffset + 2;
-                    case 0x23: return Gray + LowOffset + 2;
-                    case 0x24: return ImperialBlue + MidOffset - 1;
-                    case 0x25: return ImperialGray + MidOffset - 1;
-                    case 0x26: return RebelBeige + MidOffset - 2;
-                    case 0x27: return Gray + MidOffset - 2;
-                    case 0x28: return Gray + LowOffset - 1;
-                    case 0x48: return Gray + MidOffset - 1;
-                    case 0x68: return Gray + HighOffset - 1;
-
-                    case 0x7f: return DeathStar + LowOffset; // used in a DS tower at a lower LOD (as 0xff)
-
-                    default:
-                        Debug.LogWarning($"Unknown color: {colorId} ({colorId:X})");
-                        return null;
-                }
-            }
-        }
+            _ => null
+        };
     }
 
     public class TieFighterPaletteMapper : PaletteMapper
@@ -283,88 +291,64 @@ namespace Assets.Scripts.Palette
         protected override int CockpitStartXOffset => Cockpit;
         protected override int CockpitPaletteLength => 6;
 
-        public override ColorInfo GetColorInfo(byte colorId, int? flightGroupColor)
+        protected override int FlightGroupColorRedIndex => Red + RegularOffset;
+        protected override int FlightGroupColorBlueIndex => Blue + RegularOffset;
+        protected override int FlightGroupColorYellowIndex => Yellow + RegularOffset;
+
+        protected override int? GetBaseColorIndex(byte baseColorId, int? flightGroupColor) => baseColorId switch
         {
-            var index = GetIndex();
+            0x1 => ImperialBlue + LowOffset,
+            0x2 => ImperialGray + LowOffset,
+            0x3 => RebelBeige + LowOffset,
+            0x4 => Gray + LowOffset,
+            0x5 => ImperialBlue + MidOffset,
+            0x6 => ImperialGray + MidOffset,
+            0x7 => RebelBeige + MidOffset,
+            0x8 => Gray + MidOffset,
+            0x9 => ImperialBlue + HighOffset,
+            0xa => ImperialGray + HighOffset,
+            0xb => RebelBeige + HighOffset,
+            0xc => Gray + HighOffset,
 
-            return new ColorInfo(index, IsFlatShaded(colorId));
+            0xd => Yellow + RegularOffset,
+            0xe => GetFlightGroupColorIndex(flightGroupColor ?? 0), // used for flight group color; all 12
+            0xf => Blue + RegularOffset,
 
-            int? GetIndex()
-            {
-                // Note: 0x9c maps to an orange (we could use 130 for this) in flight, but it appears that blue
-                // (which it appears to be in the tech/film rooms) was the original intent.
-                // Colors above 0x80 are flat-shaded colors matching the lower colors: 0x09c ^ 0x80 = 0x1c = blue
-                switch (GetBaseColorId(colorId))
-                {
-                    case 0x1: return ImperialBlue + LowOffset;
-                    case 0x2: return ImperialGray + LowOffset;
-                    case 0x3: return RebelBeige + LowOffset;
-                    case 0x4: return Gray + LowOffset;
-                    case 0x5: return ImperialBlue + MidOffset;
-                    case 0x6: return ImperialGray + MidOffset;
-                    case 0x7: return RebelBeige + MidOffset;
-                    case 0x8: return Gray + MidOffset;
-                    case 0x9: return ImperialBlue + HighOffset;
-                    case 0xa: return ImperialGray + HighOffset;
-                    case 0xb: return RebelBeige + HighOffset;
-                    case 0xc: return Gray + HighOffset;
+            0x11 => Cockpit + SmallOffset,
 
-                    case 0xd: return Yellow + RegularOffset;
+            0x13 => Gray + MidOffset,
+            0x14 => Gray + HighOffset - 1,
+            0x15 => GlowGreenIndex, // flashing green
+            0x16 => GlowRedIndex, // flashing red (red engines)
+            0x17 => GlowBlueIndex, // flashing blue (blue engines)
 
-                    case 0xe: // used for flight group color; all 12
-                        if (flightGroupColor.HasValue)
-                        {
-                            if (flightGroupColor.Value == 1)
-                                return Blue + RegularOffset;
+            0x1b => Gray + HighOffset, // darkest 5 from gray in the game
 
-                            if (flightGroupColor.Value == 2)
-                                return Yellow + RegularOffset;
+            // More research especially needed for the colors that follow. Initial stab a values are very rough guesses and have not had much validation.
+            // Note that TIE Fighter has a wider palette to play around with, so we probably need more offset ranges.
 
-                            var customColor = flightGroupColor.Value - 3;
-                            if (customColor >= 0 && customColor < CustomFlightGroupColorCount)
-                                return CustomFlightGroupColorStartXOffset + customColor;
-                        }
+            0x10 => Cockpit + SmallOffset,
+            0x1a => Red + RegularOffset,
 
-                        return Red + RegularOffset;
+            // Note: 0x9c maps to an orange (we could use 130 for this) in flight, but it appears that blue
+            // (which it appears to be in the tech/film rooms) was the original intent.
+            // Colors above 0x80 are flat-shaded colors matching the lower colors: 0x09c ^ 0x80 = 0x1c = blue
+            0x1c => ImperialBlue + LowOffset + 1,
+            0x1d => ImperialGray + LowOffset + 1,
+            0x1e => RebelBeige + LowOffset + 1,
+            0x1f => Gray + LowOffset + 1,
 
-                    case 0xf: return Blue + RegularOffset;
+            0x20 => ImperialBlue + LowOffset + 2,
+            0x21 => ImperialGray + LowOffset + 2,
+            0x22 => RebelBeige + LowOffset + 2,
+            0x23 => Gray + LowOffset + 2,
+            0x24 => ImperialBlue + MidOffset - 1,
+            0x25 => ImperialGray + MidOffset - 1,
+            0x26 => RebelBeige + MidOffset - 2,
+            0x27 => Gray + MidOffset - 2,
 
-                    case 0x11: return Cockpit + SmallOffset;
-
-                    case 0x13: return Gray + MidOffset;
-                    case 0x14: return Gray + HighOffset - 1;
-                    case 0x15: return GlowGreenIndex; // flashing green
-                    case 0x16: return GlowRedIndex; // flashing red (red engines)
-                    case 0x17: return GlowBlueIndex; // flashing blue (blue engines)
-
-                    case 0x1b: return Gray + HighOffset; // darkest 5 from gray in the game
-
-                    // More research especially needed for the colors that follow. Initial stab a values are very rough guesses and have not had much validation.
-                    // Note that TIE Fighter has a wider palette to play around with, so we probably need more offset ranges.
-
-                    case 0x10: return Cockpit + SmallOffset;
-                    case 0x1a: return Red + RegularOffset;
-
-                    case 0x1c: return ImperialBlue + LowOffset + 1;
-                    case 0x1d: return ImperialGray + LowOffset + 1;
-                    case 0x1e: return RebelBeige + LowOffset + 1;
-                    case 0x1f: return Gray + LowOffset + 1;
-
-                    case 0x20: return ImperialBlue + LowOffset + 2;
-                    case 0x21: return ImperialGray + LowOffset + 2;
-                    case 0x22: return RebelBeige + LowOffset + 2;
-                    case 0x23: return Gray + LowOffset + 2;
-                    case 0x24: return ImperialBlue + MidOffset - 1;
-                    case 0x25: return ImperialGray + MidOffset - 1;
-                    case 0x26: return RebelBeige + MidOffset - 2;
-                    case 0x27: return Gray + MidOffset - 2;
-
-                    default:
-                        Debug.LogWarning($"Unknown color: {colorId} ({colorId:X})");
-                        return null;
-                }
-            }
-        }
+            _ => null
+        };
     }
 
     public struct ColorInfo

@@ -38,9 +38,9 @@ public class ModelLoader : MonoBehaviour
 
     private const float BaseScaleFactor = 0.0244140625f;
 
-    private static readonly CoordinateConverter _bigCoordinateConverter = new CoordinateConverter(BaseScaleFactor * 2);
-    private static readonly CoordinateConverter _smallCoordinateConverter = new CoordinateConverter(BaseScaleFactor / 2);
-    private static readonly List<Color> _customFlightGroupColors = new List<Color>
+    private static readonly CoordinateConverter _bigCoordinateConverter = new(BaseScaleFactor * 2);
+    private static readonly CoordinateConverter _smallCoordinateConverter = new(BaseScaleFactor / 2);
+    private static readonly List<Color> _customFlightGroupColors = new()
     {
         new Color32(40, 120, 52, 255) // green
     };
@@ -285,7 +285,6 @@ public class ModelLoader : MonoBehaviour
 
         if (mouse.leftButton.isPressed)
         {
-            // Note: was mouse axis
             var mouseDelta = mouse.delta.ReadValue();
             cameraTransform.RotateAround(_rotationOrigin, Vector3.up, mouseDelta.x * .25f);
             cameraTransform.RotateAround(_rotationOrigin, cameraTransform.right, -mouseDelta.y * .25f);
@@ -294,8 +293,8 @@ public class ModelLoader : MonoBehaviour
         {
             const float PanBaseSpeed = 0.005f;
             var mouseDelta = mouse.delta.ReadValue();
-            TranslateCamera(Vector3.right * movementScaleFactor * PanBaseSpeed * -mouseDelta.x);
-            TranslateCamera(Vector3.up * movementScaleFactor * PanBaseSpeed * -mouseDelta.y);
+            TranslateCamera(-mouseDelta.x * movementScaleFactor * PanBaseSpeed * Vector3.right);
+            TranslateCamera(-mouseDelta.y * movementScaleFactor * PanBaseSpeed * Vector3.up);
         }
 
         var mouseScrollY = mouse.scroll.y.ReadValue();
@@ -436,7 +435,7 @@ public class ModelLoader : MonoBehaviour
 
         var coordinateConverter = isBigShip ? _bigCoordinateConverter : _smallCoordinateConverter;
 
-        MeshCreator meshCreater = new MeshCreator(coordinateConverter, _baseShip, _baseSection, _baseHardpoint, null, _paletteMappers[recordType]);
+        MeshCreator meshCreater = new(coordinateConverter, _baseShip, _baseSection, _baseHardpoint, null, _paletteMappers[recordType]);
 
         sections = FilterSections(recordType, recordName, sections);
 
@@ -449,61 +448,34 @@ public class ModelLoader : MonoBehaviour
                 meshRenderer.SetPropertyBlock(_materialPropertyBlocks[recordType]);
     }
 
-    private static SectionRecord[] FilterSections(string recordType, string recordName, SectionRecord[] sections)
+    // TODO: all of this special case stuff should be encapsulated somewhere else.
+
+    // Normally, each section has its own set of LODs (you might see, e.g., one section change LOD while the others stay the same if
+    // its threshold is met but the thresholds for the other sections aren't).
+    // These two big ships have a special case where the last section is used to replace all the other sections.
+    // Makes sense: at a certain distance treating it as a single section would be quicker than handling the separate sections.
+    // We'll ignore them for now.
+    private static SectionRecord[] FilterSections(string recordType, string recordName, SectionRecord[] sections) => (recordType, recordName) switch
     {
-        if (recordType == "CRFT" || recordType == "CPLX")
-        {
-            // Normally, each section has its own set of LODs (you might see, e.g., one section change LOD while the others stay the same if
-            // its threshold is met but the thresholds for the other sections aren't).
-            // These two big ships have a special case where the last section is used to replace all the other sections.
-            // Makes sense: at a certain distance treating it as a single section would be quicker than handling the separate sections.
-            // We'll ignore them for now.
-            switch (recordName)
-            {
-                case "STARDEST":
-                case "ISDCD92":
-                    sections = sections.Take(13).ToArray();
-                    break;
+        ("CRFT", "STARDEST") or ("CPLX", "ISDCD92") or ("CRFT", "CALAMARI") or ("CPLX", "CALCD9") => sections.Take(sections.Length - 1).ToArray(),
+        _ => sections
+    };
 
-                case "CALAMARI":
-                case "CALCD9":
-                    sections = sections.Take(2).ToArray();
-                    break;
-            }
-        }
-
-        return sections;
-    }
-
-    private static int[] GetDisabledMarkingSectionIndices(string recordType, string recordName)
+    private static int[] GetDisabledMarkingSectionIndices(string recordType, string recordName) => (recordType, recordName) switch
     {
-        if (recordType == "CRFT" && recordName == "SHUTTLE")
-            return new int[] { 3 };
+        ("CRFT", "SHUTTLE") => new int[] { 3 },
+        ("CPLX", "SHUTTLE") or ("SHIP", "SHUTTLE") => new int[] { 6 },
+        _ => new int[0]
+    };
 
-        if ((recordType == "CPLX" || recordType == "SHIP") && recordName == "SHUTTLE")
-            return new int[] { 6 };
-
-        return new int[0];
-    }
-
-    private static bool IsBigShip(string recordType, string recordName)
+    private static readonly Dictionary<string, HashSet<string>> BigModels = new()
     {
-        // TODO: all of this special case stuff should be encapsulated somewhere else.
-        var bigModels = new Dictionary<string, HashSet<string>>
-        {
-            ["CRFT"] = new HashSet<string> { "STARDEST", "CALAMARI" },
-            ["CPLX"] = new HashSet<string> { "CALCD9", "ISDCD92" },
-            ["SHIP"] = new HashSet<string> { "ISD", "CAL" }
-        };
+        ["CRFT"] = new HashSet<string> { "STARDEST", "CALAMARI", "BASEBLDG" },
+        ["CPLX"] = new HashSet<string> { "CALCD9", "ISDCD92", "BASEBLDG" },
+        ["SHIP"] = new HashSet<string> { "ISD", "CAL" }
+    };
 
-        if (bigModels.TryGetValue(recordType, out var names))
-        {
-            if (names.Contains(recordName))
-                return true;
-        }
-
-        return false;
-    }
+    private static bool IsBigShip(string recordType, string recordName) => BigModels.TryGetValue(recordType, out var names) && names.Contains(recordName);
 
     private void UpdateUiLabels(LoadedModel loadedModel, bool isBigShip)
     {
